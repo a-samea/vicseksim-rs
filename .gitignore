@@ -1,1 +1,9 @@
+# Rust
 /target
+.DS_Store
+
+# Data
+/data/
+
+# Editor-specific
+.vscode/
