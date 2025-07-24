@@ -1,3 +1,7 @@
+//! Vector math operations for Vec3
+//! Provides methods for vector normalization, dot and cross products, angle calculations,
+//! and projections.
+
 use super::Vec3;
 
 impl Vec3 {
@@ -63,7 +67,7 @@ impl Vec3 {
     /// let normalized = v.normalize();
     ///
     /// // Magnitude is now 1 (within floating-point precision)
-    /// assert!((normalized.norm() - 1.0).abs() < 1e-10);
+    /// assert!((normalized.norm() - 1.0).abs() < f64::EPSILON);
     ///
     /// // Zero vector normalization
     /// assert_eq!(Vec3::zero().normalize(), Vec3::zero());
@@ -263,6 +267,7 @@ impl Vec3 {
     /// ```
     #[inline]
     pub fn approx_eq(&self, other: &Self, epsilon: f64) -> bool {
+        let epsilon = epsilon.max(f64::EPSILON); // Ensure non-zero epsilon
         (self.x - other.x).abs() < epsilon
             && (self.y - other.y).abs() < epsilon
             && (self.z - other.z).abs() < epsilon
