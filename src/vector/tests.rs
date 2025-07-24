@@ -1,17 +1,17 @@
 #[cfg(test)]
-mod vector_tests {
+mod units {
     use super::super::Vec3;
     use std::f64::consts::PI;
 
     #[test]
-    fn test_normalize_very_small_vector() {
+    fn normalize_very_small_vector() {
         let v = Vec3::new(1e-20, 1e-20, 1e-20);
         let normalized = v.normalize();
         assert_eq!(normalized, Vec3::zero());
     }
 
     #[test]
-    fn test_cross_product() {
+    fn cross_product() {
         // Standard basis vectors
         let x = Vec3::new(1.0, 0.0, 0.0);
         let y = Vec3::new(0.0, 1.0, 0.0);
@@ -32,7 +32,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_angle_between() {
+    fn angle_between() {
         let x = Vec3::new(1.0, 0.0, 0.0);
         let y = Vec3::new(0.0, 1.0, 0.0);
 
@@ -52,7 +52,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_angle_between_zero_vectors() {
+    fn angle_between_zero_vectors() {
         let zero = Vec3::zero();
         let v = Vec3::new(1.0, 0.0, 0.0);
 
@@ -62,7 +62,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_project_onto() {
+    fn project_onto() {
         let v = Vec3::new(3.0, 4.0, 0.0);
         let onto = Vec3::new(1.0, 0.0, 0.0);
 
@@ -78,7 +78,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_project_onto_zero_vector() {
+    fn project_onto_zero_vector() {
         let v = Vec3::new(1.0, 2.0, 3.0);
         let zero = Vec3::zero();
 
@@ -87,7 +87,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_approx_eq() {
+    fn approx_eq() {
         let v1 = Vec3::new(1.0, 2.0, 3.0);
         let v2 = Vec3::new(1.0000001, 2.0000001, 3.0000001);
         let v3 = Vec3::new(1.1, 2.1, 3.1);
@@ -99,7 +99,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_zero_scalar_multiplication() {
+    fn zero_scalar_multiplication() {
         let v = Vec3::new(1.0, 2.0, 3.0);
         let result = v * 0.0;
 
@@ -107,7 +107,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_negative_scalar_multiplication() {
+    fn negative_scalar_multiplication() {
         let v = Vec3::new(1.0, 2.0, 3.0);
         let result = v * -1.0;
 
@@ -115,7 +115,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_vector_properties() {
+    fn vector_properties() {
         let v1 = Vec3::new(1.0, 2.0, 3.0);
         let v2 = Vec3::new(4.0, 5.0, 6.0);
         let v3 = Vec3::new(7.0, 8.0, 9.0);
@@ -135,7 +135,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_cross_product_properties() {
+    fn cross_product_properties() {
         let v1 = Vec3::new(1.0, 2.0, 3.0);
         let v2 = Vec3::new(4.0, 5.0, 6.0);
 
@@ -152,7 +152,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_normalization_properties() {
+    fn normalization_properties() {
         let v = Vec3::new(3.0, 4.0, 5.0);
         let normalized = v.normalize();
 
@@ -168,7 +168,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_serialization_deserialization() {
+    fn serialization_deserialization() {
         let v = Vec3::new(1.23, 4.56, 7.89);
 
         // Test that the vector can be serialized and deserialized
@@ -179,7 +179,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_debug_and_clone() {
+    fn debug_and_clone() {
         let v = Vec3::new(1.0, 2.0, 3.0);
 
         // Test Debug trait
@@ -198,7 +198,7 @@ mod vector_tests {
     }
 
     #[test]
-    fn test_negation_properties() {
+    fn negation_properties() {
         let v = Vec3::new(5.0, -3.0, 1.5);
 
         // Double negation returns original
@@ -212,5 +212,193 @@ mod vector_tests {
 
         // Negation is equivalent to multiplication by -1
         assert_eq!(-v, v * -1.0);
+    }
+
+    #[test]
+    fn rotate_around_z_axis_90_degrees() {
+        let v = Vec3::new(1.0, 0.0, 0.0);
+        let axis = Vec3::z_hat();
+        let angle = PI / 2.0;
+        let rotated = v.rotate_around(&axis, angle).unwrap();
+        let expected = Vec3::new(0.0, 1.0, 0.0);
+        assert!(rotated.approx_eq(&expected, f64::EPSILON));
+    }
+
+    #[test]
+    fn rotate_by_zero_angle() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::y_hat();
+        let rotated = v.rotate_around(&axis, 0.0).unwrap();
+        assert!(rotated.approx_eq(&v, f64::EPSILON));
+    }
+
+    #[test]
+    fn rotate_by_very_small_angle() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::y_hat();
+        let small_angle = f64::EPSILON / 2.0;
+        let rotated = v.rotate_around(&axis, small_angle).unwrap();
+        assert!(rotated.approx_eq(&v, f64::EPSILON));
+    }
+
+    #[test]
+    fn rotate_by_full_circle() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let rotated = v.rotate_around(&axis, 2.0 * PI).unwrap();
+        assert!(rotated.approx_eq(&v, 1e-10));
+    }
+
+    #[test]
+    fn rotate_by_multiple_full_circles() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::z_hat();
+        let rotated = v.rotate_around(&axis, 6.0 * PI).unwrap(); // 3 full circles
+        assert!(rotated.approx_eq(&v, 1e-10));
+    }
+
+    #[test]
+    fn rotate_vector_parallel_to_axis() {
+        let axis = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let v = axis * 5.0; // Vector parallel to the axis
+        let rotated = v.rotate_around(&axis, PI / 4.0).unwrap();
+        assert!(rotated.approx_eq(&v, f64::EPSILON));
+    }
+
+    #[test]
+    fn rotate_vector_anti_parallel_to_axis() {
+        let axis = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let v = axis * -3.0; // Vector anti-parallel to the axis
+        let rotated = v.rotate_around(&axis, PI / 3.0).unwrap();
+        assert!(rotated.approx_eq(&v, 1e-10));
+    }
+
+    #[test]
+    fn rotate_preserves_magnitude() {
+        let v = Vec3::new(3.0, 4.0, 5.0);
+        let axis = Vec3::new(-1.0, 2.0, -3.0).normalize();
+        let angle = 2.5; // Arbitrary angle
+        let rotated = v.rotate_around(&axis, angle).unwrap();
+
+        assert!((rotated.norm() - v.norm()).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rotate_negative_angle() {
+        let v = Vec3::new(1.0, 0.0, 0.0);
+        let axis = Vec3::z_hat();
+        let rotated_pos = v.rotate_around(&axis, PI / 2.0).unwrap();
+        let rotated_neg = v.rotate_around(&axis, -PI / 2.0).unwrap();
+
+        // Rotating by -90° should be the opposite of +90°
+        let expected = Vec3::new(0.0, -1.0, 0.0);
+        assert!(rotated_neg.approx_eq(&expected, f64::EPSILON));
+
+        // They should be negatives of each other in y-component
+        assert!((rotated_pos.y + rotated_neg.y).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn rotate_around_zero_vector_returns_none() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let zero_axis = Vec3::zero();
+        let result = v.rotate_around(&zero_axis, PI / 2.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn rotate_around_very_small_axis_returns_none() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let tiny_axis = Vec3::new(1e-20, 1e-20, 1e-20);
+        let result = v.rotate_around(&tiny_axis, PI / 2.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn rotate_around_non_normalized_axis_returns_none() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let non_normalized = Vec3::new(2.0, 0.0, 0.0); // Length = 2, not 1
+        let result = v.rotate_around(&non_normalized, PI / 2.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn rotate_around_slightly_non_normalized_axis_returns_none() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let slightly_off = Vec3::new(1.001, 0.0, 0.0); // Just slightly longer than 1
+        let result = v.rotate_around(&slightly_off, PI / 2.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn rotate_around_axis_within_tolerance() {
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        // Create an axis that's very close to normalized (within numerical tolerance)
+        let almost_normalized = Vec3::new(1.0, 0.0, 0.0) * (1.0 + f64::EPSILON * 5.0);
+        let result = v.rotate_around(&almost_normalized, PI / 2.0);
+        assert!(result.is_some());
+    }
+
+    #[test]
+    fn rodrigues_formula_consistency() {
+        // Test that our implementation matches the mathematical formula
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let k = Vec3::new(0.0, 0.0, 1.0); // z-axis
+        let theta = PI / 6.0; // 30 degrees
+
+        let rotated = v.rotate_around(&k, theta).unwrap();
+
+        // Manual calculation using Rodrigues' formula
+        let cos_theta = theta.cos();
+        let sin_theta = theta.sin();
+        let cross_product = k.cross(&v);
+        let dot_product = k.dot(&v);
+
+        let expected =
+            v * cos_theta + cross_product * sin_theta + k * dot_product * (1.0 - cos_theta);
+
+        assert!(rotated.approx_eq(&expected, f64::EPSILON));
+    }
+
+    #[test]
+    fn rotation_composition() {
+        // Test that rotating by angle A then angle B equals rotating by angle A+B
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let angle1 = PI / 6.0;
+        let angle2 = PI / 4.0;
+
+        let rotated_separate = v
+            .rotate_around(&axis, angle1)
+            .unwrap()
+            .rotate_around(&axis, angle2)
+            .unwrap();
+        let rotated_combined = v.rotate_around(&axis, angle1 + angle2).unwrap();
+
+        assert!(rotated_separate.approx_eq(&rotated_combined, 1e-10));
+    }
+
+    #[test]
+    fn rotation_inverse() {
+        // Test that rotating by angle then by -angle returns to original
+        let v = Vec3::new(1.0, 2.0, 3.0);
+        let axis = Vec3::new(-2.0, 3.0, 1.0).normalize();
+        let angle = 1.5; // Arbitrary angle
+
+        let rotated_and_back = v
+            .rotate_around(&axis, angle)
+            .unwrap()
+            .rotate_around(&axis, -angle)
+            .unwrap();
+
+        assert!(rotated_and_back.approx_eq(&v, 1e-10));
+    }
+
+    #[test]
+    fn zero_vector_rotation() {
+        let zero = Vec3::zero();
+        let axis = Vec3::x_hat();
+        let rotated = zero.rotate_around(&axis, PI).unwrap();
+        assert_eq!(rotated, Vec3::zero());
     }
 }

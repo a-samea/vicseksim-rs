@@ -1,9 +1,9 @@
-pub(crate) use crate::particle::Particle;
+pub(crate) use crate::bird::Bird;
 
 /// Holds the global parameters and state for a single simulation run.
 #[derive(Debug)]
 pub struct FlockSimulation {
-    pub particles: Vec<Particle>,
+    pub particles: Vec<Bird>,
     pub params: SimulationParams,
 }
 
@@ -19,7 +19,7 @@ pub struct SimulationParams {
 
 impl FlockSimulation {
     /// Creates a new simulation from a set of particles and parameters.
-    pub fn new(particles: Vec<Particle>, params: SimulationParams) -> Self {
+    pub fn new(particles: Vec<Bird>, params: SimulationParams) -> Self {
         unimplemented!()
     }
 
@@ -33,15 +33,15 @@ impl FlockSimulation {
 // --- Helper Functions for the Physics Engine ---
 
 /// Calculates the great-circle distance between two particles.
-pub fn great_circle_distance(p1: &Particle, p2: &Particle, radius: f64) -> f64 {
+pub fn great_circle_distance(p1: &Bird, p2: &Bird, radius: f64) -> f64 {
     unimplemented!()
 }
 
 /// Parallel transports a velocity vector from a start point to an end point.
 pub fn parallel_transport(
     velocity: &crate::vector::Vec3,
-    start: &Particle,
-    end: &Particle,
+    start: &Bird,
+    end: &Bird,
 ) -> crate::vector::Vec3 {
     unimplemented!()
 }

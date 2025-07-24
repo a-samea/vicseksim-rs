@@ -1,5 +1,5 @@
-use crate::particle::SphericalCoord;
-use crate::simulation::Particle;
+use crate::bird::SphericalCoord;
+use crate::simulation::Bird;
 use std::path::Path;
 
 /// Saves a list of SphericalCoords to a file (e.g., for manual inspection).
@@ -13,7 +13,7 @@ pub fn load_spherical_coords_from_json(path: &Path) -> Result<Vec<SphericalCoord
 }
 
 /// Saves a full simulation state (Vec<Particle>) to a binary file.
-pub fn save_snapshot_to_binary(particles: &[Particle], path: &Path) -> Result<(), String> {
+pub fn save_snapshot_to_binary(particles: &[Bird], path: &Path) -> Result<(), String> {
     unimplemented!()
 }
 
@@ -28,7 +28,7 @@ pub fn write_visualization_csv_header(
 pub fn append_frame_to_visualization_csv(
     writer: &mut csv::Writer<std::fs::File>,
     frame: u64,
-    particles: &[Particle],
+    particles: &[Bird],
 ) -> Result<(), csv::Error> {
     unimplemented!()
 }

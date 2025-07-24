@@ -1,4 +1,4 @@
-use crate::particle::SphericalCoord;
+use crate::bird::SphericalCoord;
 
 /// Generates a set of `N` non-colliding particles in spherical coordinates.
 pub fn generate_initial_spherical_coords(
@@ -13,6 +13,6 @@ pub fn generate_initial_spherical_coords(
 pub fn convert_spherical_to_cartesian(
     coords: &[SphericalCoord],
     speed: f64,
-) -> Vec<crate::particle::Particle> {
+) -> Vec<crate::bird::Bird> {
     unimplemented!()
 }

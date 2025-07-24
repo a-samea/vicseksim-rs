@@ -272,4 +272,54 @@ impl Vec3 {
             && (self.y - other.y).abs() < epsilon
             && (self.z - other.z).abs() < epsilon
     }
+
+    /// Rotates this vector around a normalized axis by the given angle.
+    /// Uses Rodrigues' rotation formula: v' = v*cos(θ) + (k×v)*sin(θ) + k*(k·v)*(1-cos(θ))
+    ///
+    /// # Arguments
+    /// * `axis` - The **normalized** unit vector representing the axis of rotation
+    /// * `angle` - The angle in radians to rotate by
+    ///
+    /// # Returns
+    /// * `Some(Vec3)` - The rotated vector if the axis is properly normalized
+    /// * `None` - If the axis is zero, not normalized, or invalid
+    ///
+    /// # Examples
+    /// ```
+    /// # use flocking_lib::vector::Vec3;
+    /// let v = Vec3::new(1.0, 0.0, 0.0);
+    /// let axis = Vec3::new(0.0, 0.0, 1.0); // Z-axis (normalized)
+    /// let rotated = v.rotate_around(&axis, std::f64::consts::PI / 2.0).unwrap();
+    /// // Should rotate 90 degrees around Z-axis: (1,0,0) -> (0,1,0)
+    /// ```
+    pub fn rotate_around(&self, axis: &Self, angle: f64) -> Option<Self> {
+        let axis_norm_sq = axis.norm_squared();
+
+        // Check if axis is zero vector
+        if axis_norm_sq < f64::EPSILON * f64::EPSILON {
+            return None; // Cannot rotate around zero vector
+        }
+
+        // Check if axis is normalized (within tolerance)
+        let tolerance = f64::EPSILON * 10.0; // Allow small numerical errors
+        if (axis_norm_sq - 1.0).abs() > tolerance {
+            return None; // Axis must be normalized
+        }
+
+        // Handle zero rotation angle
+        if angle.abs() < f64::EPSILON {
+            return Some(*self);
+        }
+
+        // Apply Rodrigues' rotation formula
+        let cos_angle = angle.cos();
+        let sin_angle = angle.sin();
+        let cross_product = axis.cross(self);
+        let dot_product = axis.dot(self);
+
+        let rotated =
+            *self * cos_angle + cross_product * sin_angle + *axis * dot_product * (1.0 - cos_angle);
+
+        Some(rotated)
+    }
 }
