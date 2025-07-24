@@ -1,6 +1,6 @@
 [package]
-name = "Flok"
-version = "0.1.0"
+name = "vicseksim-rs"
+version = "0.2.0"
 edition = "2024"
 
 [dependencies]
@@ -17,5 +17,5 @@ name = "flocking_lib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "Flok"
+name = "vicseksim-rs"
 path = "src/main.rs"
