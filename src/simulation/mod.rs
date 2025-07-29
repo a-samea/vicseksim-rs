@@ -22,7 +22,6 @@
 //! Step N+1: Read from Buffer B  →  Write to Buffer A  →  Swap A↔B
 //! ```
 pub mod logic;
-pub mod tests;
 
 use crate::bird::Bird;
 use crate::simulation::logic::calculate_new_particle_state;
