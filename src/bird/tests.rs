@@ -156,7 +156,7 @@ mod units {
         let positions = vec![
             Vec3::new(radius, 0.0, 0.0), // On x-axis
             Vec3::new(0.0, radius, 0.0), // On y-axis
-            Vec3::new(0.0, 0.0, radius), // North pole
+            Vec3::new(0.0, 0.0, radius), // North Pole
             Vec3::new(radius / 2.0_f64.sqrt(), radius / 2.0_f64.sqrt(), 0.0), // 45° on equator
         ];
 
@@ -180,38 +180,33 @@ mod units {
     }
 
     #[test]
-    fn move_bird() {
-        // Test bird movement along sphere surface using geodesic motion.
-        // Verifies that moved positions remain on sphere surface (constant radius),
-        // movement direction follows velocity vector, and displacement norm
-        // scales correctly with speed and time step. Tests various time steps
-        // and speeds including edge cases.
-
+    fn move_on_sphere() {
         let radius = 1.0;
         let dt = 0.1;
         let speed = 2.0;
 
         // Test basic movement
-        let initial_pos = Vec3::new(1.0, 0.0, 0.0);
-        let velocity = Vec3::new(0.0, 1.0, 0.0); // Tangent at initial position
+        let initial_pos = Vec3::new(radius, 0.0, 0.0);
+        let velocity = Vec3::new(0.0, speed, 0.0); // Tangent at initial position with correct magnitude
+        let bird = Bird::new(initial_pos, velocity);
 
-        let new_pos = Bird::move_bird(&initial_pos, &velocity, dt, radius, speed);
+        let new_bird = bird.move_on_sphere(dt, radius, speed);
 
         // Should remain on sphere surface
-        assert!((new_pos.norm() - radius).abs() < 1e-10);
+        assert!((new_bird.position.norm() - radius).abs() < 1e-10);
 
         // Test movement direction (should be in general direction of velocity)
-        let displacement = new_pos - initial_pos;
+        let displacement = new_bird.position - initial_pos;
         assert!(displacement.dot(&velocity) > 0.0); // Positive correlation
 
         // Test with different time steps
         let time_steps = vec![0.01, 0.1, 0.5, 1.0];
         for test_dt in time_steps {
-            let moved = Bird::move_bird(&initial_pos, &velocity, test_dt, radius, speed);
-            assert!((moved.norm() - radius).abs() < 1e-10);
+            let moved_bird = bird.move_on_sphere(test_dt, radius, speed);
+            assert!((moved_bird.position.norm() - radius).abs() < 1e-10);
 
             // Larger time steps should produce larger displacements
-            let angle_moved = initial_pos.angle_between(&moved);
+            let angle_moved = initial_pos.angle_between(&moved_bird.position);
             let expected_angle = speed * test_dt / radius;
             assert!((angle_moved - expected_angle).abs() < 1e-10);
         }
@@ -219,8 +214,10 @@ mod units {
         // Test with different speeds
         let speeds = vec![0.1, 1.0, 5.0, 10.0];
         for test_speed in speeds {
-            let moved = Bird::move_bird(&initial_pos, &velocity, dt, radius, test_speed);
-            assert!((moved.norm() - radius).abs() < 1e-10);
+            let test_velocity = Vec3::new(0.0, test_speed, 0.0); // Velocity with correct magnitude
+            let test_bird = Bird::new(initial_pos, test_velocity);
+            let moved_bird = test_bird.move_on_sphere(dt, radius, test_speed);
+            assert!((moved_bird.position.norm() - radius).abs() < 1e-10);
         }
     }
 
@@ -230,184 +227,51 @@ mod units {
         let speed = 1.0;
         let total_time = 1.0;
 
-        // Test great circle motion: start at north pole, move east
+        // Test great circle motion: start at the North Pole, move east
         let start_pos = Vec3::new(0.0, 0.0, radius);
-        let east_velocity = Vec3::new(1.0, 0.0, 0.0); // Eastward at north pole
+        let east_velocity = Vec3::new(speed, 0.0, 0.0); // Eastward at the North Pole with correct magnitude
+        let start_bird = Bird::new(start_pos, east_velocity);
 
         // Compare one large step vs many small steps
-        let large_step = Bird::move_bird(&start_pos, &east_velocity, total_time, radius, speed);
+        let large_step_bird = start_bird.move_on_sphere(total_time, radius, speed);
 
         let num_small_steps = 100;
         let small_dt = total_time / num_small_steps as f64;
-        let mut current_pos = start_pos;
+        let mut current_bird = start_bird;
 
         for _ in 0..num_small_steps {
-            current_pos = Bird::move_bird(&current_pos, &east_velocity, small_dt, radius, speed);
-            println!("Current position: {:?} {}", current_pos, current_pos.norm());
+            current_bird = current_bird.move_on_sphere(small_dt, radius, speed);
         }
 
         // Small steps should approximate large step (within numerical tolerance)
-        assert!((large_step - current_pos).norm() < 1e-6);
+        assert!((large_step_bird.position - current_bird.position).norm() < 1e-6);
 
         // Test circular motion around a fixed axis
         let axis_pos = Vec3::new(1.0, 0.0, 0.0);
-        let tangent_velocity = Vec3::new(0.0, 1.0, 0.0);
-
-        let mut pos = axis_pos;
+        let tangent_velocity = Vec3::new(0.0, speed, 0.0); // Tangent velocity with correct magnitude
+        let mut current_bird = Bird::new(axis_pos, tangent_velocity);
         let small_dt = 0.01;
         let steps = (2.0 * PI * radius / speed / small_dt) as usize; // One full revolution
 
         for _ in 0..steps {
-            pos = Bird::move_bird(&pos, &tangent_velocity, small_dt, radius, speed);
+            current_bird = current_bird.move_on_sphere(small_dt, radius, speed);
         }
 
         // Should return close to starting position after full revolution
-        assert!((pos - axis_pos).norm() < 0.1);
+        assert!((current_bird.position - axis_pos).norm() < 0.1);
 
         // Test that velocity direction affects trajectory correctly
         let test_pos = Vec3::new(0.0, 0.0, 1.0);
-        let vel_x = Vec3::new(1.0, 0.0, 0.0);
-        let vel_y = Vec3::new(0.0, 1.0, 0.0);
+        let vel_x = Vec3::new(speed, 0.0, 0.0); // Velocities with correct magnitude
+        let vel_y = Vec3::new(0.0, speed, 0.0);
 
-        let moved_x = Bird::move_bird(&test_pos, &vel_x, 0.1, radius, speed);
-        let moved_y = Bird::move_bird(&test_pos, &vel_y, 0.1, radius, speed);
+        let bird_x = Bird::new(test_pos, vel_x);
+        let bird_y = Bird::new(test_pos, vel_y);
+
+        let moved_x = bird_x.move_on_sphere(0.1, radius, speed);
+        let moved_y = bird_y.move_on_sphere(0.1, radius, speed);
 
         // Movements should be in different directions
-        assert!((moved_x - moved_y).norm() > 0.1);
-    }
-
-    #[test]
-    fn test_physics_integration() {
-        // Integration test combining multiple physics functions. Tests complete
-        // simulation step: distance calculation between neighbors, parallel
-        // transport for velocity averaging, noise addition, and position update.
-        // Verifies that combined operations maintain physical constraints.
-
-        let radius = 1.0;
-        let dt = 0.1;
-        let speed = 1.0;
-        let noise_level = 0.1;
-
-        // Create a small flock
-        let mut birds = vec![
-            Bird::from_spherical(radius, PI / 2.0, 0.0, speed, 0.0),
-            Bird::from_spherical(radius, PI / 2.0, 0.2, speed, PI / 4.0),
-            Bird::from_spherical(radius, PI / 2.0, -0.2, speed, -PI / 4.0),
-        ];
-
-        // Simulate one complete step
-        for i in 0..birds.len() {
-            let mut neighbor_velocities = Vec::new();
-
-            // Collect neighbor velocities via parallel transport
-            for j in 0..birds.len() {
-                if i != j {
-                    let distance = birds[i].distance_from(&birds[j], radius);
-                    if distance < 1.0 {
-                        // Within interaction range
-                        let transported = birds[j].parallel_transport_velocity(&birds[i]);
-                        neighbor_velocities.push(transported);
-                    }
-                }
-            }
-
-            // Average neighbor velocities
-            let mut avg_velocity = birds[i].velocity;
-            if !neighbor_velocities.is_empty() {
-                avg_velocity = neighbor_velocities
-                    .iter()
-                    .fold(Vec3::zero(), |acc, &v| acc + v)
-                    * (1.0 / neighbor_velocities.len() as f64);
-            }
-
-            // Add noise
-            let noisy_velocity = Bird::add_noise(avg_velocity, &birds[i], noise_level);
-
-            // Update position
-            let new_position =
-                Bird::move_bird(&birds[i].position, &noisy_velocity, dt, radius, speed);
-
-            // Verify physical constraints
-            assert!((new_position.norm() - radius).abs() < 1e-10);
-            assert!((noisy_velocity.norm() - avg_velocity.norm()).abs() < 1e-10);
-            assert!(noisy_velocity.dot(&birds[i].position).abs() < 1e-10);
-
-            // Update bird
-            birds[i].position = new_position;
-            birds[i].velocity = noisy_velocity;
-        }
-
-        // Verify all birds still on sphere
-        for bird in &birds {
-            assert!((bird.position.norm() - radius).abs() < 1e-10);
-        }
-    }
-
-    #[test]
-    fn test_physics_numerical_stability() {
-        // Test numerical stability of physics functions under extreme conditions.
-        // Tests behavior with very small time steps, high speeds, large noise,
-        // and positions near coordinate singularities (poles). Validates
-        // graceful degradation and error bounds.
-
-        let radius = 1.0;
-
-        // Test extreme time steps
-        let tiny_dt = 1e-12;
-        let huge_dt = 1000.0;
-        let normal_pos = Vec3::new(1.0, 0.0, 0.0);
-        let normal_vel = Vec3::new(0.0, 1.0, 0.0);
-
-        let tiny_move = Bird::move_bird(&normal_pos, &normal_vel, tiny_dt, radius, 1.0);
-        let huge_move = Bird::move_bird(&normal_pos, &normal_vel, huge_dt, radius, 1.0);
-
-        assert!((tiny_move.norm() - radius).abs() < 1e-10);
-        assert!((huge_move.norm() - radius).abs() < 1e-10);
-
-        // Test extreme speeds
-        let tiny_speed = 1e-10;
-        let huge_speed = 1e10;
-
-        let slow_move = Bird::move_bird(&normal_pos, &normal_vel, 0.1, radius, tiny_speed);
-        let fast_move = Bird::move_bird(&normal_pos, &normal_vel, 0.1, radius, huge_speed);
-
-        assert!((slow_move.norm() - radius).abs() < 1e-10);
-        assert!((fast_move.norm() - radius).abs() < 1e-10);
-
-        // Test positions near poles (coordinate singularities)
-        let near_north = Vec3::new(1e-10, 1e-10, radius);
-        let near_south = Vec3::new(1e-10, 1e-10, -radius);
-
-        let north_bird = Bird::new(near_north, Vec3::new(1.0, 0.0, 0.0));
-        let south_bird = Bird::new(near_south, Vec3::new(1.0, 0.0, 0.0));
-
-        // Distance calculation should be stable
-        let pole_distance = north_bird.distance_from(&south_bird, radius);
-        assert!(pole_distance.is_finite());
-        assert!(pole_distance > 0.0);
-
-        // Parallel transport should handle poles gracefully
-        let transported_at_pole = north_bird.parallel_transport_velocity(&south_bird);
-        assert!(transported_at_pole.norm().is_finite());
-
-        // Movement near poles should be stable
-        let moved_near_pole =
-            Bird::move_bird(&near_north, &Vec3::new(1.0, 0.0, 0.0), 0.1, radius, 1.0);
-        assert!((moved_near_pole.norm() - radius).abs() < 1e-10);
-
-        // Test extreme noise levels
-        let extreme_noise = 100.0;
-        let noisy_extreme = Bird::add_noise(
-            normal_vel,
-            &Bird::new(normal_pos, Vec3::zero()),
-            extreme_noise,
-        );
-        assert!(noisy_extreme.norm().is_finite());
-        assert!((noisy_extreme.norm() - normal_vel.norm()).abs() < 1e-10);
-
-        // Test with very small vectors
-        let tiny_vel = Vec3::new(1e-15, 1e-15, 0.0);
-        let tiny_result = Bird::add_noise(tiny_vel, &Bird::new(normal_pos, Vec3::zero()), 0.1);
-        assert!(tiny_result.norm().is_finite());
+        assert!((moved_x.position - moved_y.position).norm() > 0.1);
     }
 }

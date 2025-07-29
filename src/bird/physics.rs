@@ -185,48 +185,91 @@ impl Bird {
             .unwrap()
     }
 
-    /// Moves a bird position along the sphere surface given velocity and time step.
+    /// Moves this bird along the sphere surface using geodesic motion and parallel transport.
     ///
-    /// This function implements geodesic motion on a sphere surface, updating a bird's
-    /// position based on its tangent velocity. The movement preserves the constraint
-    /// that the bird remains on the sphere surface of the specified radius.
+    /// This method implements complete bird movement on a sphere surface, updating both
+    /// the bird's position via geodesic motion and its velocity via parallel transport.
+    /// The movement preserves the constraint that the bird remains on the sphere surface
+    /// and maintains the velocity's tangent nature to the sphere.
     ///
     /// # Arguments
     ///
-    /// * `current` - Current position vector of the bird
-    /// * `velocity` - Tangent velocity vector (should be perpendicular to position)
     /// * `dt` - Time step duration
     /// * `radius` - Sphere radius for constraint maintenance
-    /// * `speed` - Magnitude of velocity for the movement calculation
+    /// * `speed` - Expected magnitude of velocity (used for validation)
     ///
     /// # Returns
     ///
-    /// New position `Vec3` after moving along the sphere surface for time `dt`.
+    /// New `Bird` with updated position and velocity after moving along the sphere surface
+    /// for time `dt`.
     ///
     /// # Mathematical Background
     ///
-    /// The geodesic motion on a sphere is implemented using Rodrigues' rotation formula:
+    /// **Position Update (Geodesic Motion):**
+    /// The position is updated using Rodrigues' rotation formula:
     /// - Angular displacement: α = (speed × dt) / radius
     /// - **r'** = **r** × cos(α) + (radius × sin(α)) × **v̂**
     ///
-    /// where **v̂** is the normalized velocity direction.
+    /// **Velocity Update (Parallel Transport):**
+    /// The velocity vector is transported from the old position to the new position
+    /// to maintain its tangential nature, using the parallel transport operation.
+    ///
+    /// # Validation
+    ///
+    /// The method validates that the provided `speed` parameter matches the actual
+    /// velocity magnitude within numerical tolerance (1e-10).
     ///
     /// # Sphere Constraint
     ///
-    /// The resulting position automatically maintains |**r'**| = radius, ensuring
-    /// the bird remains on the sphere surface throughout the simulation.
+    /// The resulting position automatically maintains |**r'**| = radius, and the
+    /// transported velocity remains tangent to the sphere surface.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided `speed` parameter doesn't match the bird's velocity magnitude
+    /// within numerical tolerance.
     ///
     /// # Examples
     ///
     /// ```rust
     /// # use flocking_lib::bird::Bird;
     /// # use flocking_lib::vector::Vec3;
-    /// let current_pos = Vec3::new(1.0, 0.0, 0.0);
-    /// let velocity = Vec3::new(0.0, 1.0, 0.0);
-    /// let new_pos = Bird::move_bird(&current_pos, &velocity, 0.1, 1.0, 2.0);
+    /// let bird = Bird::new(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0));
+    /// let new_bird = bird.move_on_sphere(0.1, 1.0, 2.0);
     /// ```
-    pub fn move_bird(current: &Vec3, velocity: &Vec3, dt: f64, radius: f64, speed: f64) -> Vec3 {
+    pub fn move_on_sphere(&self, dt: f64, radius: f64, speed: f64) -> Bird {
+        // Validate that the speed parameter matches the actual velocity magnitude
+        let actual_speed = self.velocity.norm();
+        let actual_radius = self.position.norm();
+        if (actual_speed - speed).abs() > 1e-10 {
+            panic!(
+                "Speed parameter ({}) doesn't match bird velocity magnitude ({}). Difference: {}",
+                speed,
+                actual_speed,
+                (actual_speed - speed).abs()
+            );
+        }
+        if (actual_radius - radius).abs() > 1e-10 {
+            panic!(
+                "Position radius ({}) doesn't match expected sphere radius ({}). Difference: {}",
+                actual_radius,
+                radius,
+                (actual_radius - radius).abs()
+            );
+        }
+
+        // Calculate new position using geodesic motion
         let angle = speed * dt / radius;
-        *current * angle.cos() + (radius * angle.sin()) * velocity.normalize()
+        let velocity_normalized = self.velocity.normalize();
+        let new_position =
+            self.position * angle.cos() + (radius * angle.sin()) * velocity_normalized;
+
+        // Create temporary bird at new position to use for parallel transport
+        let temp_bird = Bird::new(new_position, Vec3::zero());
+
+        // Transport velocity from old position to new position
+        let transported_velocity = self.parallel_transport_velocity(&temp_bird);
+
+        Bird::new(new_position, transported_velocity)
     }
 }
