@@ -185,3 +185,16 @@ impl Display for Bird {
         )
     }
 }
+
+impl Default for Bird {
+    /// Creates a default bird at the origin with zero velocity.
+    /// This is useful for initializing vectors of birds without specific
+    /// initial conditions.
+    fn default() -> Self {
+        // Default bird at origin with zero velocity
+        Bird {
+            position: Vec3::zero(),
+            velocity: Vec3::zero(),
+        }
+    }
+}
