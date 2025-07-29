@@ -1,4 +1,5 @@
 use crate::bird::Bird;
+use crate::vector::Vec3;
 
 /// Calculates the new state for a single particle based on flocking rules
 ///
@@ -27,13 +28,53 @@ pub fn calculate_new_particle_state(
     speed: f64,
     radius: f64,
 ) -> Bird {
-    // TODO: Implement the core flocking physics here
-    // This should include:
-    // 1. Find neighboring particles within interaction radius
-    // 2. Calculate alignment, cohesion, and separation forces
-    // 3. Apply noise and speed limits
-    // 4. Integrate motion equations
-    // 5. Constrain to sphere surface
+    let current_bird = &current_state[particle_index];
 
-    unimplemented!("Flocking physics calculation - implement based on bird::physics methods");
+    // 1. Find neighboring particles within interaction radius and parallel transport their velocities
+    let transported_velocities: Vec<Vec3> = current_state
+        .iter()
+        .enumerate()
+        .filter_map(|(i, neighbor)| {
+            // Skip self
+            if i == particle_index {
+                return None;
+            }
+
+            // Check if neighbor is within interaction radius
+            let distance = current_bird.distance_from(neighbor, radius);
+            if distance < interaction_radius {
+                // Parallel transport neighbor's velocity to current bird's position
+                Some(neighbor.parallel_transport_velocity(current_bird))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // 2. Calculate average velocity from neighbors
+    let new_velocity = if transported_velocities.is_empty() {
+        // No neighbors found, keep current velocity
+        current_bird.velocity
+    } else {
+        // Sum all transported velocities and divide by number of neighbors
+        let velocity_sum = transported_velocities
+            .iter()
+            .fold(Vec3::zero(), |acc, &vel| acc + vel);
+        let averaged_velocity = velocity_sum / transported_velocities.len() as f64;
+
+        // 3. Check if the norm of resulting vector is not small
+        let velocity_norm = averaged_velocity.norm();
+        if velocity_norm < 1e-6 {
+            // Norm is too small, use previous velocity without averaging
+            Bird::add_noise(current_bird.velocity, current_bird, eta)
+        } else {
+            // 4. Normalize and multiply by speed, then apply noise
+            let normalized_velocity = averaged_velocity.normalize() * speed;
+            Bird::add_noise(normalized_velocity, current_bird, eta)
+        }
+    };
+
+    // 5. Move bird with the new velocity
+    let updated_bird = Bird::new(current_bird.position, new_velocity);
+    updated_bird.move_on_sphere(dt, radius, speed)
 }
