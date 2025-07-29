@@ -1,130 +1,208 @@
+//! # Simulation Module - High-Performance Flocking Simulation Engine
+//!
+//! This module provides a high-performance simulation engine for flocking behavior on spherical
+//! surfaces. It implements a double-buffered, parallelized simulation system using `rayon` for
+//! maximum CPU utilization and channels for asynchronous I/O operations.
+//!
+//! ## Key Features
+//!
+//! - **Double Buffering**: Uses `std::mem::swap` for zero-copy buffer switching between simulation steps
+//! - **Parallel Processing**: Leverages `rayon` for parallel particle updates across multiple CPU cores
+//! - **Asynchronous I/O**: Non-blocking frame data transmission to disk through channels
+//! - **Memory Efficient**: Minimizes allocations and memory copies during simulation
+//! - **Configurable**: Flexible simulation parameters and output control
+//!
+//! ## Architecture
+//!
+//! The simulation uses a time-stepping approach where each step depends only on the previous state.
+//! This enables efficient parallelization and memory management:
+//!
+//! ```text
+//! Step N:   Read from Buffer A  →  Write to Buffer B  →  Swap A↔B
+//! Step N+1: Read from Buffer B  →  Write to Buffer A  →  Swap A↔B
+//! ```
+//!
+//! ## Usage Example
+//!
+//! ```rust
+//! use flocking_lib::simulation::Simulation;
+//! use flocking_lib::bird::Bird;
+//! use std::sync::mpsc;
+//!
+//! // Create I/O channel for frame data
+//! let (frame_sender, frame_receiver) = mpsc::channel();
+//!
+//! // Initialize simulation with birds
+//! let birds = vec![/* initial bird positions */];
+//! let mut sim = Simulation::new(birds, frame_sender, 100);
+//!
+//! // Run simulation for specific number of steps
+//! sim.run_for_steps(1000);
+//!
+//! // Or run until stopped
+//! sim.run_until_stopped();
+//! ```
+pub mod logic;
+pub mod tests;
+
 use crate::bird::Bird;
 use rayon::prelude::*;
-use std::sync::mpsc::Sender;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc;
+use std::sync::Arc;
 
-#[derive(Debug)]
-pub struct Simulation {
-    // The double-buffering strategy: we read from one and write to the other.
-    pub particles_a: Vec<Bird>,
-    pub particles_b: Vec<Bird>,
-    pub params: SimulationParams,
-    // The "sender" end of a channel to send data to the I/O thread.
-    pub io_sender: Sender<Vec<Bird>>,
-}
-
-/// Parameters that define the physics of a simulation run.
-#[derive(Debug, Clone, Copy)]
+/// Simulation parameters controlling the flocking behavior and physics
+#[derive(Debug, Clone)]
 pub struct SimulationParams {
-    pub number_of_particles: usize,
+    /// Number of Birds
+    pub num_birds: usize,
+    /// Sphere radius
     pub radius: f64,
+    /// Speed of all birds
     pub speed: f64,
+    /// Time step size for numerical integration
     pub dt: f64,
-    pub interaction_distance: f64,
+    /// Interaction radius for flocking forces
+    pub interaction_radius: f64,
+    /// Noise parameter
     pub eta: f64,
 }
 
+/// Frame data structure sent through the I/O channel
+#[derive(Debug, Clone)]
+pub struct FrameData {
+    /// Simulation step number
+    pub step: u64,
+    /// Timestamp of the frame
+    pub timestamp: f64,
+    /// Snapshot of all bird states at this frame
+    pub birds: Vec<Bird>,
+}
+
+/// High-performance flocking simulation engine with double buffering and parallel processing
+///
+/// The `Simulation` struct manages the complete simulation lifecycle, including:
+/// - Double-buffered particle state management
+/// - Parallel force calculations using rayon
+/// - Asynchronous frame data output
+/// - Simulation control and monitoring
+pub struct Simulation {
+    /// Primary particle buffer (current state)
+    particles_a: Vec<Bird>,
+    /// Secondary particle buffer (next state)
+    particles_b: Vec<Bird>,
+    /// Simulation parameters controlling physics and behavior
+    params: SimulationParams,
+    /// Current simulation step counter
+    step_count: u64,
+    /// Current simulation time
+    current_time: f64,
+    /// Channel sender for frame data output
+    frame_sender: Option<mpsc::Sender<FrameData>>,
+    /// Frame output interval (save every N steps)
+    frame_interval: u64,
+    /// Atomic flag for graceful simulation stopping
+    should_stop: Arc<AtomicBool>,
+}
+
 impl Simulation {
+    /// Creates a new simulation instance with the given initial bird configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `initial_birds` - Vector of birds representing the initial state
+    /// * `frame_sender` - Channel sender for asynchronous frame data output
+    /// * `frame_interval` - Save frame data every N simulation steps
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use flocking_lib::simulation::Simulation;
+    /// use flocking_lib::bird::Bird;
+    /// use std::sync::mpsc;
+    ///
+    /// let (tx, rx) = mpsc::channel();
+    /// let birds = vec![Bird::new(/* position */, /* velocity */)];
+    /// let sim = Simulation::new(birds, tx, 10);
+    /// ```
     pub fn new(
-        initial_value: Vec<Bird>,
-        interaction_distance: f64,
-        dt: f64,
-        noise_parameter: f64,
-        io_sender: Sender<Vec<Bird>>,
+        initial_birds: Vec<Bird>,
+        frame_sender: mpsc::Sender<FrameData>,
+        frame_interval: u64,
     ) -> Self {
-        let radius = initial_value[0].position.norm();
-        let speed = initial_value[0].velocity.norm();
-        let particles_a = initial_value;
-        let num_particles = particles_a.len();
-        if num_particles == 0 {
-            panic!("Simulation must be initialized with at least one particle.");
-        }
-        let particles_b = vec![Bird::default(); num_particles];
-        let params = SimulationParams {
-            number_of_particles: num_particles,
-            radius,
-            speed,
-            dt,
-            interaction_distance,
-            eta: noise_parameter,
-        };
+        let num_particles = initial_birds.len();
 
         Simulation {
-            particles_a,
-            particles_b,
-            params,
-            io_sender,
+            particles_a: initial_birds,
+            particles_b: vec![
+                Bird::new(
+                    crate::vector::Vec3::new(0.0, 0.0, 0.0),
+                    crate::vector::Vec3::new(0.0, 0.0, 0.0)
+                );
+                num_particles
+            ],
+            params: SimulationParams::default(),
+            step_count: 0,
+            current_time: 0.0,
+            frame_sender: Some(frame_sender),
+            frame_interval,
+            should_stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Runs the entire simulation for a given number of steps.
-    pub fn run(&mut self, total_steps: u32, save_interval: u32) {
-        for i in 0..total_steps {
-            // Optional: Save the current state to the file via the I/O thread.
-            // We clone `particles_a` so the simulation can continue immediately
-            // while the I/O thread writes the data.
-            let time = i * self.params.dt;
-            if i % save_interval == 0 {
-                println!("Step {}: Sending data to I/O thread.", time);
-                if self.io_sender.send(self.particles_a.clone()).is_err() {
-                    // This error means the I/O thread has terminated.
-                    eprintln!("Error: Could not send data to I/O thread. It might have panicked.");
-                    break;
-                }
-            }
-            self.step();
+    /// Creates a new simulation without frame output capability
+    ///
+    /// Useful for benchmarking or when frame data is not needed.
+    pub fn new_no_output(initial_birds: Vec<Bird>) -> Self {
+        let num_particles = initial_birds.len();
+
+        Simulation {
+            particles_a: initial_birds,
+            particles_b: vec![
+                Bird::new(
+                    crate::vector::Vec3::new(0.0, 0.0, 0.0),
+                    crate::vector::Vec3::new(0.0, 0.0, 0.0)
+                );
+                num_particles
+            ],
+            params: SimulationParams::default(),
+            step_count: 0,
+            current_time: 0.0,
+            frame_sender: None,
+            frame_interval: 1,
+            should_stop: Arc::new(AtomicBool::new(false)),
         }
     }
 
-    /// Performs a single step of the simulation.
-    fn step(&mut self) {
-        // Determine which buffer is current and which is next.
-        // We will read from `current` and write the new state into `next`.
-        let (current_state, next_state) = (&self.particles_a, &mut self.particles_b);
+    /// Gets a reference to current simulation parameters
+    pub fn parameters(&self) -> &SimulationParams {
+        &self.params
+    }
 
-        // This is the core of the parallel computation using `rayon`.
-        // `par_iter_mut()` gives us a parallel iterator over mutable items.
-        next_state
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(i, particle_next)| {
-                // The `current_state` vector is borrowed immutably and is
-                // accessible safely from all threads. This is the "lock" we wanted.
-                *particle_next = calculate_new_particle_state(i, current_state);
-            });
+    /// Returns the current simulation step count
+    pub fn step_count(&self) -> u64 {
+        self.step_count
+    }
 
-        // Swap the buffers. The new state in `particles_b` now becomes the
-        // current state in `particles_a` for the next iteration.
-        // This is a very cheap operation, it only swaps pointers.
-        std::mem::swap(&mut self.particles_a, &mut self.particles_b);
-        self.step_count += 1;
+    /// Returns the current simulation time
+    pub fn current_time(&self) -> f64 {
+        self.current_time
+    }
+
+    /// Gets a reference to the current particle state (read-only)
+    pub fn current_particles(&self) -> &[Bird] {
+        &self.particles_a
+    }
+
+    /// Returns a clone of the stop flag for external control
+    pub fn stop_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.should_stop)
     }
 }
 
-/// The pure calculation logic for a single particle's next state.
-/// This function is where the physics of your simulation would live.
-/// It depends only on the particle's index and the *entire* previous state.
-fn calculate_new_particle_state(index: usize, all_particles: &[Particle]) -> Particle {
-    let current_particle = all_particles[index];
-    let mut force = 0.0;
-    let time_step = 0.1;
-
-    // A simple N-body simulation: every particle attracts every other particle.
-    // This is computationally intensive and benefits greatly from parallelism.
-    for (other_idx, other_particle) in all_particles.iter().enumerate() {
-        if index == other_idx {
-            continue;
-        }
-        let distance = other_particle.position - current_particle.position;
-        // Simple gravitational-like force
-        if distance.abs() > 0.1 {
-            force += 1.0 / distance;
-        }
+impl Drop for Simulation {
+    /// Ensures graceful shutdown when simulation is dropped
+    fn drop(&mut self) {
+        self.stop();
     }
-
-    let mut new_particle = current_particle;
-    new_particle.acceleration = force; // Assuming mass = 1
-    new_particle.velocity += new_particle.acceleration * time_step;
-    new_particle.position += new_particle.velocity * time_step;
-
-    new_particle
 }
