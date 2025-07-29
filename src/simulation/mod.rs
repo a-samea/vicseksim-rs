@@ -21,32 +21,10 @@
 //! Step N:   Read from Buffer A  →  Write to Buffer B  →  Swap A↔B
 //! Step N+1: Read from Buffer B  →  Write to Buffer A  →  Swap A↔B
 //! ```
-//!
-//! ## Usage Example
-//!
-//! ```rust
-//! use flocking_lib::simulation::Simulation;
-//! use flocking_lib::bird::Bird;
-//! use std::sync::mpsc;
-//!
-//! // Create I/O channel for frame data
-//! let (frame_sender, frame_receiver) = mpsc::channel();
-//!
-//! // Initialize simulation with birds
-//! let birds = vec![/* initial bird positions */];
-//! let mut sim = Simulation::new(birds, frame_sender, 100);
-//!
-//! // Run simulation for specific number of steps
-//! sim.run_for_steps(1000);
-//!
-//! // Or run until stopped
-//! sim.run_until_stopped();
-//! ```
 pub mod logic;
 pub mod tests;
 
 use crate::bird::Bird;
-use rayon::prelude::*;
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -66,6 +44,8 @@ pub struct SimulationParams {
     pub interaction_radius: f64,
     /// Noise parameter
     pub eta: f64,
+    /// Number of steps to run
+    pub iterations: usize,
 }
 
 /// Frame data structure sent through the I/O channel
@@ -111,65 +91,52 @@ impl Simulation {
     /// # Arguments
     ///
     /// * `initial_birds` - Vector of birds representing the initial state
+    /// * `dt` - Time step size for numerical integration
+    /// * `iterations` - Total number of simulation steps to run
+    /// * `interaction_radius` - Radius for flocking interactions
+    /// * `noise_param` - Noise parameter for stochastic behavior
     /// * `frame_sender` - Channel sender for asynchronous frame data output
     /// * `frame_interval` - Save frame data every N simulation steps
     ///
-    /// # Examples
+    /// # Returns
     ///
-    /// ```rust
-    /// use flocking_lib::simulation::Simulation;
-    /// use flocking_lib::bird::Bird;
-    /// use std::sync::mpsc;
+    /// A new `Simulation` instance configured with the provided parameters
     ///
-    /// let (tx, rx) = mpsc::channel();
-    /// let birds = vec![Bird::new(/* position */, /* velocity */)];
-    /// let sim = Simulation::new(birds, tx, 10);
-    /// ```
+    /// # Panics
+    /// Panics if `initial_birds` is empty, as at least one bird is required to start the simulation.
     pub fn new(
         initial_birds: Vec<Bird>,
+        dt: f64,
+        iterations: usize,
+        interaction_radius: f64,
+        noise_param: f64,
         frame_sender: mpsc::Sender<FrameData>,
         frame_interval: u64,
     ) -> Self {
-        let num_particles = initial_birds.len();
+        let num_birds = initial_birds.len();
+        if num_birds < 1 {
+            panic!("Simulation requires at least one bird to start");
+        }
+        let radius = initial_birds.first().unwrap().position.norm();
+        let speed = initial_birds.first().unwrap().velocity.norm();
+        let params = SimulationParams {
+            num_birds,
+            radius,
+            speed,
+            dt,
+            interaction_radius,
+            eta: noise_param,
+            iterations,
+        };
 
         Simulation {
             particles_a: initial_birds,
-            particles_b: vec![
-                Bird::new(
-                    crate::vector::Vec3::new(0.0, 0.0, 0.0),
-                    crate::vector::Vec3::new(0.0, 0.0, 0.0)
-                );
-                num_particles
-            ],
-            params: SimulationParams::default(),
+            particles_b: vec![Bird::default(); num_birds],
+            params,
             step_count: 0,
             current_time: 0.0,
             frame_sender: Some(frame_sender),
             frame_interval,
-            should_stop: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    /// Creates a new simulation without frame output capability
-    ///
-    /// Useful for benchmarking or when frame data is not needed.
-    pub fn new_no_output(initial_birds: Vec<Bird>) -> Self {
-        let num_particles = initial_birds.len();
-
-        Simulation {
-            particles_a: initial_birds,
-            particles_b: vec![
-                Bird::new(
-                    crate::vector::Vec3::new(0.0, 0.0, 0.0),
-                    crate::vector::Vec3::new(0.0, 0.0, 0.0)
-                );
-                num_particles
-            ],
-            params: SimulationParams::default(),
-            step_count: 0,
-            current_time: 0.0,
-            frame_sender: None,
-            frame_interval: 1,
             should_stop: Arc::new(AtomicBool::new(false)),
         }
     }
