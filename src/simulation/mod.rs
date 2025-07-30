@@ -27,12 +27,13 @@ use crate::bird::Bird;
 use crate::simulation::logic::calculate_new_particle_state;
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 
 /// Simulation parameters controlling the flocking behavior and physics
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationParams {
     /// Number of Birds
     pub num_birds: usize,
@@ -51,7 +52,7 @@ pub struct SimulationParams {
 }
 
 /// Frame data structure sent through the I/O channel
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameData {
     /// Simulation step number
     pub step: u64,
