@@ -20,4 +20,3 @@ path = "src/lib.rs"
 [[bin]]
 name = "vicseksim-rs"
 path = "src/main.rs"
-
