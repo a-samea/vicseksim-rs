@@ -1,0 +1,79 @@
+\documentclass[12pt,a4paper]{article}
+
+% --- Encoding and Fonts ---
+\usepackage[utf8]{inputenc}   % UTF-8 encoding
+\usepackage[T1]{fontenc}      % Better font encoding
+\usepackage{lmodern}          % Latin Modern font
+
+% --- Page Layout ---
+\usepackage[a4paper,margin=1in]{geometry} % Page margins
+\usepackage{setspace}         % Line spacing
+\onehalfspacing               % 1.5 line spacing for drafting
+
+% --- Math Support ---
+\usepackage{amsmath, amssymb, amsthm} % AMS math packages
+\usepackage{mathtools}                % Extra math tools
+\usepackage{bm}                       % Bold math symbols
+\usepackage{siunitx}                  % SI units
+
+% --- Graphics & Figures ---
+\usepackage{graphicx}         % Include images
+\usepackage{caption}          % Better captions
+\usepackage{subcaption}       % Subfigures
+\usepackage{float}            % Improved float control
+
+% --- Hyperlinks ---
+\usepackage{xcolor}           % Colors for links
+\usepackage[
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=teal,
+    urlcolor=magenta
+]{hyperref}
+
+% --- Misc Utilities ---
+\usepackage{microtype}        % Better typography
+\usepackage{enumitem}         % Custom lists
+\usepackage{booktabs}         % Better tables
+\usepackage{csquotes}         % Quotation support
+
+% --- Title Info ---
+\title{Draft Article Title}
+\author{Your Name}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This is the abstract of the document. It briefly summarizes the content.
+\end{abstract}
+
+\section{Introduction}
+This is where your introduction goes. You can write inline math like
+\( E = mc^2 \) or display math:
+\[
+\int_{0}^{\infty} e^{-x^2} \, dx = \frac{\sqrt{\pi}}{2}.
+\]
+
+\section{Figures}
+Here is an example of including an image (make sure the file exists in your project folder):
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{example-image}
+    \caption{Example image from the \texttt{mwe} package.}
+    \label{fig:example}
+\end{figure}
+
+\section{Hyperlinks}
+You can add hyperlinks like this: \href{https://www.latex-project.org}{LaTeX Project}.
+
+\section{Conclusion}
+Your conclusion goes here.
+
+\bibliographystyle{plain}
+\bibliography{references} % Create a references.bib file if needed
+
+\end{document}
