@@ -62,31 +62,6 @@ mod units {
     }
 
     #[test]
-    fn project_onto() {
-        let v = Vec3::new(3.0, 4.0, 0.0);
-        let onto = Vec3::new(1.0, 0.0, 0.0);
-
-        let projection = v.project_onto(&onto);
-        assert_eq!(projection, Vec3::new(3.0, 0.0, 0.0));
-
-        // Project onto diagonal
-        let diagonal = Vec3::new(1.0, 1.0, 0.0);
-        let proj_diag = v.project_onto(&diagonal);
-        assert!((proj_diag.x - 3.5).abs() < f64::EPSILON);
-        assert!((proj_diag.y - 3.5).abs() < f64::EPSILON);
-        assert_eq!(proj_diag.z, 0.0);
-    }
-
-    #[test]
-    fn project_onto_zero_vector() {
-        let v = Vec3::new(1.0, 2.0, 3.0);
-        let zero = Vec3::zero();
-
-        let projection = v.project_onto(&zero);
-        assert_eq!(projection, Vec3::zero());
-    }
-
-    #[test]
     fn approx_eq() {
         let v1 = Vec3::new(1.0, 2.0, 3.0);
         let v2 = Vec3::new(1.0000001, 2.0000001, 3.0000001);

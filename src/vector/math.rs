@@ -73,14 +73,9 @@ impl Vec3 {
     /// assert_eq!(Vec3::zero().normalize(), Vec3::zero());
     /// ```
     pub fn normalize(&self) -> Self {
-        let norm_sq = self.norm_squared();
-        if norm_sq > f64::EPSILON * f64::EPSILON {
-            let inv_norm = norm_sq.sqrt().recip();
-            Vec3 {
-                x: self.x * inv_norm,
-                y: self.y * inv_norm,
-                z: self.z * inv_norm,
-            }
+        let norm = self.norm();
+        if norm > f64::EPSILON {
+            *self / norm
         } else {
             Vec3::zero()
         }
@@ -202,47 +197,6 @@ impl Vec3 {
             (dot_product / norm_product_sq.sqrt()).acos()
         } else {
             0.0
-        }
-    }
-
-    /// Projects this vector onto another vector.
-    ///
-    /// Vector projection finds the component of this vector that lies along
-    /// the direction of the target vector. The result is a vector parallel
-    /// to the target with magnitude equal to the scalar projection.
-    ///
-    /// Formula: proj_b(a) = ((a·b)/(b·b)) * b
-    ///
-    /// # Arguments
-    /// * `other` - The vector to project onto
-    ///
-    /// # Returns
-    /// The projection of this vector onto the target vector
-    ///
-    /// # Examples
-    /// ```
-    /// # use flocking_lib::vector::Vec3;
-    /// let v = Vec3::new(3.0, 4.0, 0.0);
-    /// let x_axis = Vec3::x_hat();
-    ///
-    /// // Project onto X-axis extracts X-component
-    /// let projection = v.project_onto(&x_axis);
-    /// assert_eq!(projection, Vec3::new(3.0, 0.0, 0.0));
-    ///
-    /// // Projection onto zero vector returns zero
-    /// assert_eq!(v.project_onto(&Vec3::zero()), Vec3::zero());
-    /// ```
-    pub fn project_onto(&self, other: &Self) -> Self {
-        let norm_sq = other.norm_squared();
-        if norm_sq > f64::EPSILON * f64::EPSILON {
-            let scalar_projection = self.dot(other) / norm_sq;
-            Vec3 {
-                x: other.x * scalar_projection,
-                y: other.y * scalar_projection,
-                z: other.z * scalar_projection,
-            }
-        } else {
-            Vec3::zero()
         }
     }
 

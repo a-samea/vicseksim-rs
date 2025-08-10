@@ -283,10 +283,6 @@ The \texttt{Vec3} structure provides a rich set of methods for vector manipulati
     
     Calculates the angle in radians between this vector and another. The result is in the range \([0, \pi]\).
 
-    \item \textbf{\texttt{project\_onto(\&self, other: \&Self) : Self}}
-    
-    Projects this vector onto another vector. The result is a vector component that lies along the direction of the target vector.
-
     \item \textbf{\texttt{rotate\_around(\&self, axis: \&Self, angle: f64) : Option<Self>}}
     
     Rotates this vector around a specified \emph{normalized} axis by a given angle in radians. Returns \texttt{Some(Vec3)} on success, \texttt{None} if the axis is invalid (e.g., zero vector or not normalized).
