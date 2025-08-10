@@ -209,11 +209,11 @@ The simulation is implemented in the Rust programming language. The library's fu
         \item bird: Defines the fundamental particle representation and their associated physics.
     \end{itemize}
     \item Simulation Engine: \begin{itemize}
-        \item simulation: Houses the high-performance, parallelized simulation loop and state management.
         \item ensemble: Facilitates the generation of initial conditions, particularly for uniform particle distribution on the sphere.
+        \item simulation: Houses the high-performance, parallelized simulation loop and state management.
+        \item analysis: Implements metrics for collective behavior, such as order parameters and cluster analysis.
     \end{itemize}
     \item Utilities and Analysis: \begin{itemize}
-        \item analysis: Implements metrics for collective behavior, such as order parameters and cluster analysis.
         \item io: Manages data persistence and serialization.
         \item cli: Defines the command-line interface for direct execution.
     \end{itemize}
@@ -358,6 +358,9 @@ Given that the struct implements the \texttt{Copy} and \texttt{Clone} traits, it
     
     Moves this bird along the sphere surface using geodesic motion and parallel transport. This method implements complete bird movement on a sphere surface, updating both the bird position via geodesic motion and its velocity via parallel transport. The movement preserves the constraint that the bird remains on the sphere surface and maintains the velocity tangent nature to the sphere.
 \end{itemize}
+
+\subsection{Ensemble Module}
+This module facilitates the generation of an initial ensemble of "birds," uniformly distributed on a spherical surface for flocking simulations. It employs a rejection sampling methodology to ensure a minimum geodesic separation between particles, thereby preventing initial overlaps while maintaining spatial homogeneity. Particle positions are determined using spherical coordinates, with polar angles derived from a uniform distribution of their cosine to guarantee a truly uniform surface coverage. The generated ensemble is then transmitted via a Multi-Producer, Single-Consumer (MPSC) channel, enabling asynchronous processing and decoupling the generation logic from subsequent data handling. For instance, to generate 1000 birds on a unit sphere with a speed of 2.0 and a minimum separation of 0.1, one would invoke \textbf{\texttt{ensemble::generate(1000, 1.0, 2.0, 0.1, tx).unwrap();}}, where \texttt{tx} is the sender half of an MPSC channel.
 
 \section{Results}
 Hopefully someday

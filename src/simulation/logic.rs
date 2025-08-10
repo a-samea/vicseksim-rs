@@ -1,24 +1,7 @@
 use crate::bird::Bird;
 use crate::vector::Vec3;
-
-/// Calculates the new state for a single particle based on flocking rules
-///
-/// This function contains the core physics and flocking behavior logic.
-/// It computes forces from neighboring particles and updates position/velocity.
-///
-/// # Arguments
-///
-/// * `particle_index` - Index of the particle to update
-/// * `current_state` - Read-only reference to all current particle states
-/// * `dt` - Time step for integration
-/// * `interaction_radius` - Radius for neighbor detection
-/// * `eta` - Noise parameter
-/// * `speed` - Constant speed constraint
-/// * `radius` - Sphere radius
-///
-/// # Returns
-///
-/// New `Bird` state for the specified particle
+ 
+ 
 pub fn calculate_new_particle_state(
     particle_index: usize,
     current_state: &[Bird],

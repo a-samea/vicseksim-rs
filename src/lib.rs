@@ -77,7 +77,7 @@
 //! in parallel contexts via `rayon`. The simulation engine handles thread safety
 //! internally for parallel bird updates.
 
-// Declare all modules to make them part of the library
+// Complete
 pub mod bird;
 pub mod ensemble;
 pub mod io;

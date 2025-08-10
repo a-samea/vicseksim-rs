@@ -1,6 +1,6 @@
 use clap::Parser;
 use flocking_lib::cli::{Cli, Commands};
-use flocking_lib::{ensemble, io};
+use flocking_lib::{ensemble::{self, EnsembleGenerationRequest, EnsembleGenerationParams}, io};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -69,42 +69,25 @@ fn main() -> Result<(), String> {
                     for ensemble_id in start_ensemble..end_ensemble {
                         let ensemble_tag = format!("{}_{:04}", base_tag, ensemble_id);
 
-                        // Create a channel for this specific ensemble generation
-                        let (gen_tx, gen_rx) = mpsc::channel();
+                        // Create the ensemble generation request
+                        let request = EnsembleGenerationRequest {
+                            id: ensemble_id,
+                            tag: ensemble_tag.clone(),
+                            params: EnsembleGenerationParams {
+                                n_particles: birds_per_ensemble,
+                                radius,
+                                speed,
+                                min_distance,
+                            },
+                        };
 
-                        // Generate the ensemble
-                        match ensemble::generate(
-                            birds_per_ensemble,
-                            radius,
-                            speed,
-                            min_distance,
-                            gen_tx,
-                        ) {
+                        // Generate the ensemble directly to the main channel
+                        match ensemble::generate(request, tx.clone()) {
                             Ok(()) => {
-                                // Receive the generated birds
-                                match gen_rx.recv() {
-                                    Ok(birds) => {
-                                        // Send the ensemble data to the main thread for saving
-                                        if let Err(e) = tx.send((ensemble_id, ensemble_tag, birds))
-                                        {
-                                            eprintln!(
-                                                "Thread {}: Failed to send ensemble {}: {}",
-                                                thread_id, ensemble_id, e
-                                            );
-                                        } else {
-                                            println!(
-                                                "Thread {}: Completed ensemble {} ({} birds)",
-                                                thread_id, ensemble_id, birds_per_ensemble
-                                            );
-                                        }
-                                    }
-                                    Err(e) => {
-                                        eprintln!(
-                                            "Thread {}: Failed to receive ensemble {}: {}",
-                                            thread_id, ensemble_id, e
-                                        );
-                                    }
-                                }
+                                println!(
+                                    "Thread {}: Submitted ensemble {} for generation",
+                                    thread_id, ensemble_id
+                                );
                             }
                             Err(e) => {
                                 eprintln!(
@@ -126,12 +109,12 @@ fn main() -> Result<(), String> {
 
             // Collect and save ensembles as they complete
             let mut completed_count = 0;
-            while let Ok((ensemble_id, ensemble_tag, birds)) = ensemble_rx.recv() {
+            while let Ok(ensemble_result) = ensemble_rx.recv() {
                 // Start a receiver for saving this ensemble
                 let (save_tx, save_rx) = mpsc::channel();
 
                 // Send the birds to be saved
-                if let Err(e) = save_tx.send(birds) {
+                if let Err(e) = save_tx.send(ensemble_result.birds) {
                     eprintln!("Failed to send birds for saving: {}", e);
                     continue;
                 }
@@ -139,20 +122,20 @@ fn main() -> Result<(), String> {
                 // Start the receiver to save the ensemble
                 match io::ensemble::start_receiver(
                     save_rx,
-                    ensemble_tag.clone(),
-                    *radius,
-                    *speed,
-                    *min_distance,
+                    ensemble_result.tag.clone(),
+                    ensemble_result.params.radius,
+                    ensemble_result.params.speed,
+                    ensemble_result.params.min_distance,
                 ) {
                     Ok(_) => {
                         completed_count += 1;
                         println!(
                             "Saved ensemble {} ({}/{} completed)",
-                            ensemble_tag, completed_count, ensemble_count
+                            ensemble_result.tag, completed_count, ensemble_count
                         );
                     }
                     Err(e) => {
-                        eprintln!("Failed to save ensemble {}: {}", ensemble_tag, e);
+                        eprintln!("Failed to save ensemble {}: {}", ensemble_result.tag, e);
                     }
                 }
             }

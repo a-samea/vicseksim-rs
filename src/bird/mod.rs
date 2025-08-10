@@ -77,7 +77,7 @@ impl Bird {
     /// let velocity = Vec3::new(0.0, 1.0, 0.0);  // Tangent at this position
     /// let bird = Bird::new(position, velocity);
     /// ```
-    fn new(position: Vec3, velocity: Vec3) -> Self {
+    pub fn new(position: Vec3, velocity: Vec3) -> Self {
         Bird { position, velocity }
     }
 
