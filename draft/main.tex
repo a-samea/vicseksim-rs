@@ -37,6 +37,40 @@
 \usepackage{booktabs}         % Better tables
 \usepackage{csquotes}         % Quotation support
 
+\usepackage{listings}
+\lstdefinelanguage{rust}{
+  keywords={
+    as, async, await, break, const, continue, crate, dyn, else, enum, extern, false, fn, for, if, impl, in, let, loop, match, mod, move, mut, pub, ref, return, self, Self, static, struct, super, trait, true, type, unsafe, use, where, while,
+    bool, char, f32, f64, i16, i32, i64, i8, isize, usize, str, String, Option, Result, Box, Vec,
+    assert, assert_eq, println, print,
+    default,
+  },
+  sensitive=true, % Case-sensitive
+  morecomment=[l]//, % Line comments
+  morecomment=[s]{/*}{*/}, % Block comments
+  morestring=[d]\" % Double quoted strings
+}
+\lstset{
+  language=rust, % Set the default language to Rust
+  basicstyle=\ttfamily\small, % Font style for code (typewriter, small)
+  keywordstyle=\color{blue}, % Style for keywords
+  commentstyle=\color{green!50!black}, % Style for comments
+  stringstyle=\color{red}, % Style for strings
+  identifierstyle=\color{black}, % Style for identifiers (variables, functions)
+  numbers=left, % Display line numbers on the left
+  numberstyle=\tiny\color{gray}, % Style for line numbers
+  stepnumber=1, % Increment line numbers by 1
+  numbersep=5pt, % Space between line numbers and code
+  breaklines=true, % Automatically break long lines
+  frame=single, % Draw a frame around the code block
+  backgroundcolor=\color{gray!10}, % Light gray background
+  showspaces=false, % Don't show spaces
+  showtabs=false, % Don't show tabs
+  tabsize=2, % How many spaces a tab is equal to
+  caption={Rust Code Snippet}, % Default caption
+  label={lst:rust_example} % Default label for cross-referencing
+}
+
 % --- Title Info ---
 \title{Vicsek Model Simulation on Sphere}
 \author{Alireza Same}
@@ -167,7 +201,129 @@ The primary objective of this simulation is to identify phase changes within the
     The time step is a critical parameter that must be chosen carefully to ensure the stability and accuracy of the simulation. A small \(dt\) is necessary to avoid numerical instabilities, especially when dealing with high-speed particles or large-radius spheres. However, excessively small time steps can lead to increased computational costs without significant benefits. Therefore, it is essential to find an optimal balance for \(dt\) that maintains the integrity of the simulation while minimizing computational overhead.
 \end{itemize}
 
-\section{Implementation details}
+\section{Implementation Details}
+The simulation is implemented in the Rust programming language. The library's functionality is organized into the following submodules:
+\begin{itemize}
+    \item Core Physics: \begin{itemize}
+        \item bird: Defines the fundamental particle representation and their associated physics.
+        \item vector: Provides optimized 3D vector mathematics crucial for spherical geometry.
+    \end{itemize}
+    \item Simulation Engine: \begin{itemize}
+        \item simulation: Houses the high-performance, parallelized simulation loop and state management.
+        \item ensemble: Facilitates the generation of initial conditions, particularly for uniform particle distribution on the sphere.
+    \end{itemize}
+    \item Utilities and Analysis: \begin{itemize}
+        \item analysis: Implements metrics for collective behavior, such as order parameters and cluster analysis.
+        \item io: Manages data persistence and serialization.
+        \item cli: Defines the command-line interface for direct execution.
+    \end{itemize}
+\end{itemize}
+\subsection{Vector Module}
+The \texttt{Vec3} structure is designed to represent a vector in a 3D Cartesian coordinate system.
+\begin{lstlisting}[language=rust, caption={\texttt{Vec3} struct}, label={lst:rust_main}]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct Vec3 {
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
+}
+\end{lstlisting}
+
+The \texttt{Vec3} structure provides a rich set of methods for vector manipulation, creation, and mathematical operations. These methods are categorized below for clarity.
+
+\subsubsection{Constructors and Static Methods}
+\begin{itemize}
+    \item \textbf{\texttt{new(x: f64, y: f64, z: f64)}}
+    
+    Creates a new 3D vector with the specified $x$, $y$, and $z$ components. This is the primary way to instantiate a \texttt{Vec3}.
+
+    \item \textbf{\texttt{zero()}}
+
+    Returns a zero vector (\(0, 0, 0\)). Useful as an origin point or additive identity.
+
+    \item \textbf{\texttt{x\_hat()}}
+
+    Returns the unit vector along the positive X-axis (\(1, 0, 0\)).
+
+    \item \textbf{\texttt{y\_hat()}}
+
+    Returns the unit vector along the positive Y-axis (\(0, 1, 0\)).
+
+    \item \textbf{\texttt{z\_hat()}}
+
+    Returns the unit vector along the positive Z-axis (\(0, 0, 1\)).
+\end{itemize}
+
+\subsubsection{Magnitude and Normalization Methods}
+\begin{itemize}
+    \item \textbf{\texttt{norm\_squared() : f64}}
+    
+    Calculates the squared magnitude (\(x^2 + y^2 + z^2\)) of the vector. More efficient than \texttt{norm()} as it avoids a square root.
+
+    \item \textbf{\texttt{norm() : f64}}
+
+    Calculates the magnitude (Euclidean length) of the vector (\(\sqrt{x^2 + y^2 + z^2}\)).
+
+    \item \textbf{\texttt{normalize() : Self}}
+    
+    Returns a unit vector (\text{magnitude} = 1) in the same direction. Returns the zero vector if the original vector has zero or near-zero magnitude.
+\end{itemize}
+
+\subsubsection{Vector Operations}
+\begin{itemize}
+    \item \textbf{\texttt{dot(\&self, other: \&Self) : f64}}
+
+    Calculates the dot product (scalar product) with another vector. Measures how much two vectors point in the same direction.
+
+    \item \textbf{\texttt{cross(\&self, other: \&Self) : Self}}
+    
+    Calculates the cross product with another vector. Produces a vector perpendicular to both input vectors, following the right-hand rule.
+
+    \item \textbf{\texttt{angle\_between(\&self, other: \&Self) : f64}}
+    
+    Calculates the angle in radians between this vector and another. The result is in the range \([0, \pi]\).
+
+    \item \textbf{\texttt{project\_onto(\&self, other: \&Self) : Self}}
+    
+    Projects this vector onto another vector. The result is a vector component that lies along the direction of the target vector.
+
+    \item \textbf{\texttt{rotate\_around(\&self, axis: \&Self, angle: f64) : Option<Self>}}
+    
+    Rotates this vector around a specified \emph{normalized} axis by a given angle in radians. Returns \texttt{Some(Vec3)} on success, \texttt{None} if the axis is invalid (e.g., zero vector or not normalized).
+\end{itemize}
+
+\subsubsection{Utility Functions}
+\begin{itemize}
+    \item \textbf{\texttt{approx\_eq(\&self, other: \&Self, epsilon: f64) : bool}}
+    
+    Checks if this vector is approximately equal to another within a given \texttt{epsilon} tolerance for each component, due to floating-point precision.
+
+    \item \textbf{\texttt{Add<Vec3> for Vec3}} ($\texttt{+}$)
+    Overloads the addition operator (\texttt{+}) for vector-vector addition.
+
+    \item \textbf{\texttt{Sub<Vec3> for Vec3}} ($\texttt{-}$)
+    Overloads the subtraction operator (\texttt{-}) for vector-vector subtraction.
+
+    \item \textbf{\texttt{Mul<f64> for Vec3}} ($\texttt{*}$)
+    Overloads the multiplication operator (\texttt{*}) for scalar multiplication (\texttt{Vec3 * f64}).
+
+    \item \textbf{\texttt{Mul<Vec3> for f64}} ($\texttt{*}$)
+    Overloads the multiplication operator (\texttt{*}) for commutative scalar multiplication (\texttt{f64 * Vec3}).
+
+    \item \textbf{\texttt{Div<f64> for Vec3}} ($\texttt{/}$)
+    Overloads the division operator (\texttt{/}) for scalar division (\texttt{Vec3 / f64}).
+
+    \item \textbf{\texttt{Neg for Vec3}} ($\texttt{-}$)
+    Overloads the unary negation operator (\texttt{-}) to reverse the vector's direction.
+
+    \item \textbf{\texttt{PartialEq for Vec3}} ($\texttt{==}$)
+    Implements equality comparison (\texttt{==}) for \texttt{Vec3} instances. Note that due to floating-point arithmetic, \texttt{approx\_eq} is generally preferred for meaningful comparisons.
+\end{itemize}
+
+
+
+
+
 
 
 \section{Results}
