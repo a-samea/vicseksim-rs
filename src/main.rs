@@ -1,7 +1,7 @@
 use clap::Parser;
 use flocking_lib::cli::{Cli, Commands};
 use flocking_lib::{ensemble, io};
-use flocking_lib::io::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
+use flocking_lib::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -108,43 +108,46 @@ fn main() -> Result<(), String> {
             // Drop the original sender so the receiver will know when all threads are done
             drop(ensemble_tx);
 
+            // Start IO receiver thread for saving ensembles
+            let (io_tx, io_rx) = mpsc::channel();
+            let io_handle = io::ensemble::start_receiver_thread(io_rx);
+
             // Collect and save ensembles as they complete
             let mut completed_count = 0;
             while let Ok(ensemble_result) = ensemble_rx.recv() {
-                // Start a receiver for saving this ensemble
-                let (save_tx, save_rx) = mpsc::channel();
-
-                // Send the birds to be saved
-                if let Err(e) = save_tx.send(ensemble_result.birds) {
-                    eprintln!("Failed to send birds for saving: {}", e);
+                // Send ensemble to IO thread for saving
+                if let Err(e) = io_tx.send(ensemble_result.clone()) {
+                    eprintln!("Failed to send ensemble for saving: {}", e);
                     continue;
                 }
 
-                // Start the receiver to save the ensemble
-                match io::ensemble::start_receiver(
-                    save_rx,
-                    ensemble_result.tag.clone(),
-                    ensemble_result.params.radius,
-                    ensemble_result.params.speed,
-                    ensemble_result.params.min_distance,
-                ) {
-                    Ok(_) => {
-                        completed_count += 1;
-                        println!(
-                            "Saved ensemble {} ({}/{} completed)",
-                            ensemble_result.tag, completed_count, ensemble_count
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to save ensemble {}: {}", ensemble_result.tag, e);
-                    }
+                completed_count += 1;
+                println!(
+                    "Submitted ensemble {} for saving ({}/{} completed)",
+                    ensemble_result.tag, completed_count, ensemble_count
+                );
+            }
+
+            // Drop IO sender to signal completion
+            drop(io_tx);
+
+            // Wait for IO thread to complete saving
+            match io_handle.join() {
+                Ok(Ok(())) => {
+                    println!("All ensembles saved successfully");
+                }
+                Ok(Err(e)) => {
+                    eprintln!("IO thread error: {}", e);
+                }
+                Err(e) => {
+                    eprintln!("IO thread panicked: {:?}", e);
                 }
             }
 
-            // Wait for all threads to complete
+            // Wait for all generation threads to complete
             for handle in handles {
                 if let Err(e) = handle.join() {
-                    eprintln!("Thread panicked: {:?}", e);
+                    eprintln!("Generation thread panicked: {:?}", e);
                 }
             }
 
