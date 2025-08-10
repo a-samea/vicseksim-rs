@@ -1,4 +1,3 @@
-
 //! # Ensemble Generation Module
 //!
 //! This module provides functionality for generating ensembles of birds (particles) for flocking
@@ -33,10 +32,11 @@
 //! ### Single Ensemble Generation
 //! ```rust
 //! use std::sync::mpsc;
+//! use flocking_lib::ensemble;
 //! use flocking_lib::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
 //!
 //! let (tx, rx) = mpsc::channel();
-//! 
+//!
 //! let request = EnsembleGenerationRequest {
 //!     id: 1,
 //!     tag: "test_ensemble".to_string(),

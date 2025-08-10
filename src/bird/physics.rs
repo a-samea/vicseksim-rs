@@ -36,8 +36,8 @@ impl Bird {
     /// ```rust
     /// # use flocking_lib::bird::Bird;
     /// # use flocking_lib::vector::Vec3;
-    /// let bird1 = Bird::new(Vec3::new(1.0, 0.0, 0.0), Vec3::zero());
-    /// let bird2 = Bird::new(Vec3::new(0.0, 1.0, 0.0), Vec3::zero());
+    /// let bird1 = Bird{position:Vec3::new(1.0, 0.0, 0.0), velocity:Vec3::zero()};
+    /// let bird2 = Bird{position: Vec3::new(0.0, 1.0, 0.0), velocity: Vec3::zero()};
     /// let distance = bird1.distance_from(&bird2, 1.0); // π/2 ≈ 1.57
     /// ```
     pub fn distance_from(&self, other: &Bird, radius: f64) -> f64 {
@@ -78,8 +78,8 @@ impl Bird {
     /// ```rust
     /// # use flocking_lib::bird::Bird;
     /// # use flocking_lib::vector::Vec3;
-    /// let bird1 = Bird::new(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
-    /// let bird2 = Bird::new(Vec3::new(0.0, 1.0, 0.0), Vec3::zero());
+    /// let bird1 = Bird {position: Vec3::new(1.0, 0.0, 0.0), velocity: Vec3::new(0.0, 1.0, 0.0) };
+    /// let bird2 = Bird{position: Vec3::new(0.0, 1.0, 0.0), velocity: Vec3::zero()};
     /// let transported_vel = bird1.parallel_transport_velocity(&bird2);
     /// ```
     pub fn parallel_transport_velocity(&self, base: &Bird) -> Vec3 {
@@ -99,7 +99,7 @@ impl Bird {
         }
     }
 
-    /// Generates random angular noise for stochastic flocking dynamics.
+    /// Generates random angular noise for stochastic flocking dynamics. Internal function.
     ///
     /// This function produces normally distributed random angles used to introduce
     /// noise into bird velocity directions, simulating environmental perturbations
@@ -126,13 +126,6 @@ impl Bird {
     /// This implements the stochastic component of the Vicsek model and similar
     /// flocking algorithms where noise strength controls the order-disorder transition.
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use flocking_lib::bird::Bird;
-    /// let noise = Bird::random_angle_noise(0.1); // Low noise for ordered flocking
-    /// let chaos = Bird::random_angle_noise(1.0); // High noise for disordered motion
-    /// ```
     #[inline]
     fn random_angle_noise(order_parameter: f64) -> f64 {
         use rand::prelude::*;
@@ -174,7 +167,7 @@ impl Bird {
     /// ```rust
     /// # use flocking_lib::bird::Bird;
     /// # use flocking_lib::vector::Vec3;
-    /// let base_bird = Bird::new(Vec3::new(0.0, 0.0, 1.0), Vec3::zero());
+    /// let base_bird = Bird{position:Vec3::new(0.0, 0.0, 1.0), velocity:Vec3::zero()};
     /// let avg_velocity = Vec3::new(1.0, 0.0, 0.0);
     /// let noisy_vel = Bird::add_noise(avg_velocity, &base_bird, 0.2);
     /// ```
@@ -234,7 +227,7 @@ impl Bird {
     /// ```rust
     /// # use flocking_lib::bird::Bird;
     /// # use flocking_lib::vector::Vec3;
-    /// let bird = Bird::new(Vec3::new(1.0, 0.0, 0.0), Vec3::new(0.0, 2.0, 0.0));
+    /// let bird = Bird{position:Vec3::new(1.0, 0.0, 0.0), velocity:Vec3::new(0.0, 2.0, 0.0)};
     /// let new_bird = bird.move_on_sphere(0.1, 1.0, 2.0);
     /// ```
     pub fn move_on_sphere(&self, dt: f64, radius: f64, speed: f64) -> Bird {
@@ -264,12 +257,9 @@ impl Bird {
         let new_position =
             self.position * angle.cos() + (radius * angle.sin()) * self.velocity.normalize();
 
-        let new_velocity = 
+        let new_velocity =
             self.velocity * angle.cos() - (speed * angle.sin()) * self.position.normalize();
 
-        Bird::new(
-            new_position,
-            new_velocity
-        )
+        Bird::new(new_position, new_velocity)
     }
 }

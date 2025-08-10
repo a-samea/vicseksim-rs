@@ -17,22 +17,14 @@
 //! use flocking_lib::bird::Bird;
 //! use flocking_lib::vector::Vec3;
 //!
-//! // Create a bird at a specific position with initial velocity
-//! let position = Vec3::new(1.0, 0.0, 0.0);  // On unit sphere
-//! let velocity = Vec3::new(0.0, 1.0, 0.0);  // Tangent velocity
-//! let bird = Bird::new(position, velocity);
-//!
 //! // Birds can be created from spherical coordinates
-//! let bird_spherical = Bird::from_spherical(
+//! let bird = Bird::from_spherical(
 //!     1.0,    // radius
 //!     0.5,    // theta (polar angle)
 //!     1.2,    // phi (azimuthal angle)
 //!     2.0,    // speed
 //!     0.3     // velocity angle alpha
 //! );
-//!
-//! // Calculate distance between birds
-//! let distance = bird.distance_from(bird_spherical);
 //!
 //! // Display bird information
 //! println!("{}", bird);
@@ -60,23 +52,13 @@ impl Bird {
     /// This constructor creates a bird with the given position and velocity vectors.
     /// It's the responsibility of the caller to ensure that the velocity vector
     /// is tangent to the sphere surface at the given position for physically
-    /// correct simulation behavior.
+    /// correct simulation behavior. This cunstructor is privately used
     ///
     /// # Arguments
     ///
     /// * `position` - 3D Cartesian position vector from sphere center
     /// * `velocity` - 3D velocity vector (**should be tangent to sphere surface**)
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use flocking_lib::bird::Bird;
-    /// # use flocking_lib::vector::Vec3;
-    /// // Create a bird on unit sphere at (1,0,0) moving in y-direction
-    /// let position = Vec3::new(1.0, 0.0, 0.0);
-    /// let velocity = Vec3::new(0.0, 1.0, 0.0);  // Tangent at this position
-    /// let bird = Bird::new(position, velocity);
-    /// ```
     fn new(position: Vec3, velocity: Vec3) -> Self {
         Bird { position, velocity }
     }
