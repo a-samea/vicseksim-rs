@@ -41,62 +41,14 @@
 //! Functions may panic on corrupted data during deserialization, which is the
 //! expected behavior for data integrity validation.
 
-use std::fs::{self, File};
-use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
-use std::time::{SystemTime, UNIX_EPOCH};
 use crate::ensemble::{EnsembleResult};
+use crate::io::{get_data_path, save_data, load_data, get_current_timestamp, DataType};
 
 
-
-
-/// Gets the file path for an ensemble with the given tag and ID
-/// 
-/// This is an internal utility function that constructs the standardized file path
-/// for ensemble binary files using the format: `./data/ensemble/{tag}-{id}.bin`
-/// 
-/// # Arguments
-/// 
-/// * `tag` - The tag identifier for the ensemble
-/// * `id` - The unique numeric identifier for the ensemble
-/// 
-/// # Returns
-/// 
-/// A `PathBuf` pointing to the ensemble file location
-fn get_ensemble_path(tag: &str, id: &usize) -> PathBuf {
-    Path::new("./data/ensemble").join(format!("{}-{}.bin", tag, id))
-}
-
-/// Saves an EnsembleResult to a binary file on disk
-///
-/// This function serializes the ensemble data using bincode and saves it to the
-/// standardized location. The parent directory is created if it doesn't exist.
-/// 
-/// # Arguments
-///
-/// * `ensemble` - The ensemble result to save containing birds, metadata, and parameters
-/// 
-/// # Returns
-/// 
-/// * `Ok(())` - Successfully saved the ensemble
-/// * `Err(Box<dyn std::error::Error>)` - File system or serialization error
-pub fn save_ensemble(ensemble: &EnsembleResult) -> Result<(), Box<dyn std::error::Error>> {
-    let file_path = get_ensemble_path(&ensemble.tag, &ensemble.id);
-
-    // Create parent directory if it doesn't exist
-    if let Some(parent) = file_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let file = File::create(&file_path)?;
-    let writer = BufWriter::new(file);
-
-    bincode::serialize_into(writer, ensemble)?;
-
-    Ok(())
-}
 
 /// Starts a background receiver thread for concurrent ensemble saving
 /// 
@@ -126,13 +78,15 @@ pub fn start_receiver_thread(
         while let Ok(ensemble_result) = rx.recv() {
             // Add timestamp info
             let ensemble_with_metadata = EnsembleResult {
-                created_at: SystemTime::now().duration_since(UNIX_EPOCH)
-                    .map_err(|e| e.to_string())?.as_secs(),
+                created_at: get_current_timestamp(),
                 ..ensemble_result
             };
 
             // Save to file using the tag
-            save_ensemble(&ensemble_with_metadata).map_err(|e| e.to_string())?;
+            save_data(
+                &ensemble_with_metadata, 
+                &get_data_path(DataType::Ensemble, &ensemble_with_metadata.tag, &ensemble_with_metadata.id)
+            ).map_err(|e| e.to_string())?;
 
             println!(
                 "Ensemble '{}' (ID: {}) saved successfully with {} birds",
@@ -240,17 +194,8 @@ pub fn list_ensemble_tags_and_ids() -> Result<Vec<(String, usize)>, Box<dyn std:
 /// This function will panic if the file exists but contains corrupted data that
 /// cannot be deserialized. This is the expected behavior for data integrity validation.
 pub fn load_ensemble(tag: &str, id: &usize) -> Result<EnsembleResult, Box<dyn std::error::Error>> {
-    let file_path = get_ensemble_path(tag, id);
-
-    if !file_path.exists() {
-        return Err(format!("Ensemble file not found: {}", file_path.display()).into());
-    }
-
-    let file = File::open(&file_path)?;
-    let reader = BufReader::new(file);
-
-    // Try loading as EnsembleResult first (new format)
-    Ok(bincode::deserialize_from::<_, EnsembleResult>(reader)?)
+    let file_path = get_data_path(DataType::Ensemble, tag, id);
+    load_data(&file_path)
 }
 
 

@@ -1,352 +1,488 @@
-//! # Simulation IO Module - Simulation Data Persistence
+//! # Simulation IO Module
 //!
-//! This module handles saving and loading of simulation frame data and run metadata.
-//! Simulation data is saved as binary files using serde serialization in the `./data/simulation/` directory.
+//! This module provides input/output functionality for simulation data persistence and retrieval.
+//! It handles the serialization, deserialization, and file management of simulation results
+//! for the flocking simulation system.
 //!
-//! ## File Format
+//! ## Overview
 //!
-//! - **Location**: `./data/simulation/[tag]/`
-//! - **Frames**: `frames.bin` - Binary serialized frame data
-//! - **Metadata**: `metadata.bin` - Binary serialized run metadata
+//! The simulation IO module serves as the bridge between in-memory simulation data structures
+//! and persistent storage. It supports:
+//! - Binary serialization/deserialization of simulation data using bincode
+//! - Concurrent simulation saving through receiver threads using MPSC channels
+//! - Directory discovery and simulation enumeration
+//! - Structured file naming and organization
+//! - Frame collection from simulation snapshots
 //!
-//! ## Usage
+//! ## File Organization
 //!
-//! ```rust
+//! Simulation files are stored in the `./data/simulation/` directory with the naming convention:
+//! ```text
+//! {tag}-{id}.bin
+//! ```
+//! Where:
+//! - `tag`: A string identifier for the simulation type or experiment
+//! - `id`: A unique numeric identifier for the specific simulation instance
+//!
+//! ## Integration Points
+//!
+//! - **Simulation Module**: Provides `SimulationSnapshot` and `SimulationResult` data structures
+//! - **IO Module**: Integrates with directory management through `ensure_data_directories()`
+//! - **CLI Interface**: Used for batch simulation execution and analysis workflows
+//! - **Analysis Module**: Loads simulation results for post-processing analysis
+//!
+//! ## MPSC Integration
+//!
+//! The module receives `SimulationSnapshot` data through MPSC channels from simulation threads.
+//! Each simulation run spawns a receiver thread that collects snapshots and builds a complete
+//! `SimulationResult` for persistence.
+//!
+//! ### Example Usage
+//!
+//! ```rust,no_run
 //! use std::sync::mpsc;
-//! use flocking_lib::io::simulation;
+//! use std::collections::HashMap;
+//! use flocking_lib::simulation::{SimulationSnapshot, SimulationParams};
+//! use flocking_lib::io::simulation::{FrameCollector, start_receiver_thread};
 //!
-//! // Setup channel to receive frame data from simulation
+//! // Set up MPSC channel for frame collection
 //! let (tx, rx) = mpsc::channel();
 //!
-//! // Start simulation data receiver
-//! simulation::start_receiver(rx, "my_simulation".to_string(), run_metadata);
+//! // Prepare frame collectors for multiple simulations
+//! let mut collectors = HashMap::new();
+//! let params = SimulationParams {
+//!     num_birds: 100,
+//!     radius: 1.0,
+//!     speed: 1.0,
+//!     dt: 0.01,
+//!     interaction_radius: 0.5,
+//!     eta: 0.1,
+//!     iterations: 1000,
+//! };
+//!
+//! collectors.insert(1, FrameCollector::new(
+//!     1,                    // simulation id
+//!     "test".to_string(),   // tag
+//!     42,                   // ensemble id
+//!     params,
+//! ));
+//!
+//! // Start the IO receiver thread
+//! let io_handle = start_receiver_thread(rx, collectors);
+//!
+//! // Send simulation snapshots (this would be done by the simulation engine)
+//! // tx.send((1, snapshot)).unwrap();
+//!
+//! // When all snapshots are sent, close the channel and wait for completion
+//! drop(tx);
+//! io_handle.join().unwrap().unwrap();
+//! ```
+//!
+//! ### Alternative Dynamic Usage
+//!
+//! For more flexibility, use the dynamic receiver that handles simulation initialization:
+//!
+//! ```rust,no_run
+//! use std::sync::mpsc;
+//! use flocking_lib::simulation::{SimulationParams};
+//! use flocking_lib::io::simulation::{SimulationMessage, start_dynamic_receiver_thread};
+//!
+//! let (tx, rx) = mpsc::channel();
+//! let io_handle = start_dynamic_receiver_thread(rx);
+//!
+//! // Initialize a new simulation
+//! tx.send(SimulationMessage::Init {
+//!     id: 1,
+//!     tag: "experiment_1".to_string(),
+//!     ensemble_id: 42,
+//!     params: SimulationParams {
+//!         num_birds: 100,
+//!         radius: 1.0,
+//!         speed: 1.0,
+//!         dt: 0.01,
+//!         interaction_radius: 0.5,
+//!         eta: 0.1,
+//!         iterations: 1000,
+//!     },
+//! }).unwrap();
+//!
+//! // Send snapshots as they are generated
+//! // tx.send(SimulationMessage::Snapshot { simulation_id: 1, snapshot }).unwrap();
+//!
+//! // Finalize the simulation when complete
+//! tx.send(SimulationMessage::Finalize { simulation_id: 1 }).unwrap();
+//!
+//! drop(tx);
+//! io_handle.join().unwrap().unwrap();
 //! ```
 
-use crate::simulation::{FrameData, SimulationParams};
-use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
-use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
+use std::fs;
+use std::path::{Path};
 use std::sync::mpsc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::collections::HashMap;
+use crate::simulation::{SimulationSnapshot, SimulationResult, SimulationParams};
+use crate::io::{get_data_path, save_data, load_data, get_current_timestamp, DataType};
 
-/// Complete simulation run data
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SimulationRun {
-    /// Metadata about the simulation run
-    pub metadata: SimulationMetadata,
-    /// All frame data from the simulation
-    pub frames: Vec<FrameData>,
-}
 
-/// Metadata associated with each simulation run
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SimulationMetadata {
-    /// User-defined tag for the simulation run
+/// Frame collector for building simulation results from individual snapshots
+/// 
+/// This structure accumulates `SimulationSnapshot` frames received through MPSC
+/// channels and builds a complete `SimulationResult` when the simulation finishes.
+#[derive(Debug)]
+pub struct FrameCollector {
+    /// Simulation metadata and parameters
+    pub id: usize,
     pub tag: String,
-    /// Tag of the ensemble used as initial conditions
-    pub ensemble_tag: String,
-    /// Simulation parameters used
+    pub ensemble_id: usize,
     pub params: SimulationParams,
-    /// Total number of frames saved
-    pub total_frames: usize,
-    /// Frame saving interval (every N steps)
-    pub frame_interval: u64,
-    /// Timestamp when simulation was started
-    pub started_at: u64,
-    /// Timestamp when simulation was completed
-    pub completed_at: Option<u64>,
-    /// File format version for compatibility
-    pub version: String,
-    /// Whether the simulation completed successfully
-    pub completed_successfully: bool,
+    
+    /// Collected simulation frames
+    pub snapshots: Vec<SimulationSnapshot>,
+    
+    /// Metadata
+    pub total_steps: u64,
 }
 
-/// Status of a simulation run
-#[derive(Debug, Clone)]
-pub struct SimulationStatus {
-    /// Directory path
-    pub path: PathBuf,
-    /// Whether the run is valid and loadable
-    pub is_valid: bool,
-    /// Error message if invalid
-    pub error: Option<String>,
-    /// Metadata if valid
-    pub metadata: Option<SimulationMetadata>,
-    /// Number of frames available
-    pub frame_count: usize,
-}
-
-/// Starts a receiver thread that listens for frame data from MPSC channel
-/// and saves it to disk with the specified tag
-///
-/// # Arguments
-///
-/// * `rx` - MPSC receiver channel for frame data
-/// * `tag` - Tag name for the simulation run
-/// * `ensemble_tag` - Tag of the ensemble used as initial conditions
-/// * `params` - Simulation parameters
-/// * `frame_interval` - Frame saving interval
-pub fn start_receiver(
-    rx: mpsc::Receiver<FrameData>,
-    tag: String,
-    ensemble_tag: String,
-    params: SimulationParams,
-    frame_interval: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Ensure simulation directory exists
-    crate::io::ensure_data_directories()?;
-
-    let run_dir = get_simulation_run_path(&tag);
-    fs::create_dir_all(&run_dir)?;
-
-    // Create initial metadata
-    let mut metadata = SimulationMetadata {
-        tag: tag.clone(),
-        ensemble_tag,
-        params,
-        total_frames: 0,
-        frame_interval,
-        started_at: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
-        completed_at: None,
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        completed_successfully: false,
-    };
-
-    // Save initial metadata
-    save_metadata(&metadata, &tag)?;
-
-    let mut frames = Vec::new();
-
-    // Receive and collect frame data
-    while let Ok(frame) = rx.recv() {
-        frames.push(frame);
-        metadata.total_frames = frames.len();
-
-        // Periodically save progress
-        if frames.len() % 100 == 0 {
-            save_frames(&frames, &tag)?;
-            save_metadata(&metadata, &tag)?;
-            println!("Saved {} frames for simulation '{}'", frames.len(), tag);
+impl FrameCollector {
+    /// Creates a new frame collector for a simulation
+    /// 
+    /// # Arguments
+    /// 
+    /// * `id` - Unique simulation identifier
+    /// * `tag` - Simulation tag for grouping
+    /// * `ensemble_id` - Associated ensemble identifier
+    /// * `params` - Simulation parameters
+    /// 
+    /// # Returns
+    /// 
+    /// A new `FrameCollector` instance ready to receive snapshots
+    pub fn new(id: usize, tag: String, ensemble_id: usize, params: SimulationParams) -> Self {
+        Self {
+            id,
+            tag,
+            ensemble_id,
+            params,
+            snapshots: Vec::new(),
+            total_steps: 0,
         }
     }
-
-    // Mark as completed and save final data
-    metadata.completed_at = Some(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs());
-    metadata.completed_successfully = true;
-
-    save_frames(&frames, &tag)?;
-    save_metadata(&metadata, &tag)?;
-
-    println!(
-        "Simulation '{}' completed successfully with {} frames",
-        tag,
-        frames.len()
-    );
-
-    Ok(())
-}
-
-/// Saves simulation metadata to disk
-///
-/// # Arguments
-///
-/// * `metadata` - The metadata to save
-/// * `tag` - Tag name for the simulation run
-pub fn save_metadata(
-    metadata: &SimulationMetadata,
-    tag: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let run_dir = get_simulation_run_path(tag);
-    fs::create_dir_all(&run_dir)?;
-
-    let metadata_path = run_dir.join("metadata.bin");
-    let file = File::create(&metadata_path)?;
-    let writer = BufWriter::new(file);
-
-    bincode::serialize_into(writer, metadata)?;
-
-    Ok(())
-}
-
-/// Saves frame data to disk
-///
-/// # Arguments
-///
-/// * `frames` - The frame data to save
-/// * `tag` - Tag name for the simulation run
-pub fn save_frames(frames: &[FrameData], tag: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let run_dir = get_simulation_run_path(tag);
-    fs::create_dir_all(&run_dir)?;
-
-    let frames_path = run_dir.join("frames.bin");
-    let file = File::create(&frames_path)?;
-    let writer = BufWriter::new(file);
-
-    bincode::serialize_into(writer, frames)?;
-
-    Ok(())
-}
-
-/// Loads complete simulation run data
-///
-/// # Arguments
-///
-/// * `tag` - Tag name of the simulation run to load
-pub fn load_simulation_run(tag: &str) -> Result<SimulationRun, Box<dyn std::error::Error>> {
-    let metadata = load_metadata(tag)?;
-    let frames = load_frames(tag)?;
-
-    Ok(SimulationRun { metadata, frames })
-}
-
-/// Loads only simulation metadata (without frame data)
-///
-/// # Arguments
-///
-/// * `tag` - Tag name of the simulation run
-pub fn load_metadata(tag: &str) -> Result<SimulationMetadata, Box<dyn std::error::Error>> {
-    let run_dir = get_simulation_run_path(tag);
-    let metadata_path = run_dir.join("metadata.bin");
-
-    if !metadata_path.exists() {
-        return Err(format!("Simulation metadata not found: {}", metadata_path.display()).into());
+    
+    /// Adds a simulation snapshot to the collection
+    /// 
+    /// # Arguments
+    /// 
+    /// * `snapshot` - The simulation snapshot to add
+    pub fn add_snapshot(&mut self, snapshot: SimulationSnapshot) {
+        self.total_steps = self.total_steps.max(snapshot.step);
+        self.snapshots.push(snapshot);
     }
-
-    let file = File::open(&metadata_path)?;
-    let reader = BufReader::new(file);
-
-    let metadata: SimulationMetadata = bincode::deserialize_from(reader)?;
-
-    Ok(metadata)
+    
+    /// Finalizes the collection and creates a complete simulation result
+    /// 
+    /// # Returns
+    /// 
+    /// A complete `SimulationResult` ready for persistence
+    pub fn finalize(self) -> SimulationResult {
+        let duration_seconds = self.total_steps as f64 * self.params.dt;
+        let final_state = self.snapshots
+            .last()
+            .map(|snapshot| snapshot.birds.clone())
+            .unwrap_or_default();
+            
+        SimulationResult {
+            id: self.id,
+            tag: self.tag,
+            ensemble_id: self.ensemble_id,
+            params: self.params,
+            snapshots: self.snapshots,
+            final_state,
+            created_at: get_current_timestamp(),
+            total_steps: self.total_steps,
+            duration_seconds,
+        }
+    }
 }
 
-/// Loads frame data from a simulation run
-///
+/// Starts a background receiver thread for concurrent simulation frame collection and saving
+/// 
+/// This function spawns a dedicated thread that listens on an MPSC channel for
+/// SimulationSnapshot data, collects them into complete simulation results, and 
+/// automatically saves each completed simulation to disk. It provides progress 
+/// feedback through console output.
+/// 
+/// The receiver thread will run until the channel is closed (all senders dropped).
+/// This enables concurrent simulation execution where multiple worker threads can
+/// send snapshots for collection without blocking.
+/// 
 /// # Arguments
 ///
-/// * `tag` - Tag name of the simulation run
-pub fn load_frames(tag: &str) -> Result<Vec<FrameData>, Box<dyn std::error::Error>> {
-    let run_dir = get_simulation_run_path(tag);
-    let frames_path = run_dir.join("frames.bin");
+/// * `rx` - MPSC receiver channel for SimulationSnapshot data
+/// * `collectors` - HashMap mapping simulation IDs to their frame collectors
+///
+/// # Returns
+///
+/// * A join handle for the spawned receiver thread that returns `Result<(), String>`
+/// 
+/// # Note
+/// 
+/// This function expects that simulation metadata (id, tag, ensemble_id, params) 
+/// is somehow communicated alongside the snapshots. For simplicity, this implementation
+/// assumes the collectors are pre-configured. In practice, you might want to send
+/// a setup message first or include metadata in each snapshot.
+pub fn start_receiver_thread(
+    rx: mpsc::Receiver<(usize, SimulationSnapshot)>, // (simulation_id, snapshot)
+    mut collectors: HashMap<usize, FrameCollector>,
+) -> thread::JoinHandle<Result<(), String>> {
+    thread::spawn(move || {
+        // Ensure simulation directory exists
+        crate::io::ensure_data_directories().map_err(|e| e.to_string())?;
 
-    if !frames_path.exists() {
-        return Err(format!("Simulation frames not found: {}", frames_path.display()).into());
-    }
+        // Process each simulation snapshot as it arrives
+        while let Ok((simulation_id, snapshot)) = rx.recv() {
+            if let Some(collector) = collectors.get_mut(&simulation_id) {
+                collector.add_snapshot(snapshot);
+            } else {
+                eprintln!("Warning: Received snapshot for unknown simulation ID: {}", simulation_id);
+            }
+        }
 
-    let file = File::open(&frames_path)?;
-    let reader = BufReader::new(file);
+        // Finalize and save all collected simulations
+        for (_simulation_id, collector) in collectors {
+            let simulation_result = collector.finalize();
+            
+            // Save to file
+            save_data(
+                &simulation_result, 
+                &get_data_path(DataType::Simulation, &simulation_result.tag,&simulation_result.id)
+                ).map_err(|e| e.to_string())?;
 
-    let frames: Vec<FrameData> = bincode::deserialize_from(reader)?;
+            println!(
+                "Simulation '{}' (ID: {}) saved successfully with {} snapshots ({} steps, {:.2}s)",
+                simulation_result.tag,
+                simulation_result.id,
+                simulation_result.snapshots.len(),
+                simulation_result.total_steps,
+                simulation_result.duration_seconds
+            );
+        }
 
-    Ok(frames)
+        Ok(())
+    })
 }
 
-/// Loads a specific range of frames from a simulation run
-///
+/// Alternative receiver thread that creates collectors dynamically
+/// 
+/// This version is more flexible as it doesn't require pre-configured collectors.
+/// Instead, it expects the first message for each simulation to contain metadata.
+/// 
 /// # Arguments
-///
-/// * `tag` - Tag name of the simulation run
-/// * `start_frame` - Starting frame index (inclusive)
-/// * `end_frame` - Ending frame index (exclusive)
-pub fn load_frame_range(
-    tag: &str,
-    start_frame: usize,
-    end_frame: usize,
-) -> Result<Vec<FrameData>, Box<dyn std::error::Error>> {
-    let frames = load_frames(tag)?;
+/// 
+/// * `rx` - MPSC receiver for either metadata or snapshot messages
+/// 
+/// # Returns
+/// 
+/// A join handle for the spawned receiver thread
+pub fn start_dynamic_receiver_thread(
+    rx: mpsc::Receiver<SimulationMessage>,
+) -> thread::JoinHandle<Result<(), String>> {
+    thread::spawn(move || {
+        // Ensure simulation directory exists
+        crate::io::ensure_data_directories().map_err(|e| e.to_string())?;
 
-    if start_frame >= frames.len() {
-        return Err("Start frame index out of bounds".into());
-    }
+        let mut collectors: HashMap<usize, FrameCollector> = HashMap::new();
 
-    let end_idx = std::cmp::min(end_frame, frames.len());
-    Ok(frames[start_frame..end_idx].to_vec())
+        // Process each message as it arrives
+        while let Ok(message) = rx.recv() {
+            match message {
+                SimulationMessage::Init { id, tag, ensemble_id, params } => {
+                    let collector = FrameCollector::new(id, tag, ensemble_id, params);
+                    collectors.insert(id, collector);
+                }
+                SimulationMessage::Snapshot { simulation_id, snapshot } => {
+                    if let Some(collector) = collectors.get_mut(&simulation_id) {
+                        collector.add_snapshot(snapshot);
+                    } else {
+                        eprintln!("Warning: Received snapshot for uninitialized simulation ID: {}", simulation_id);
+                    }
+                }
+                SimulationMessage::Finalize { simulation_id } => {
+                    if let Some(collector) = collectors.remove(&simulation_id) {
+                        let simulation_result = collector.finalize();
+                        
+                        // Save to file
+                        save_data(
+                            &simulation_result,
+                            &get_data_path(DataType::Simulation, &simulation_result.tag, &simulation_result.id)
+                        ).map_err(|e| e.to_string())?;
+
+                        println!(
+                            "Simulation '{}' (ID: {}) saved successfully with {} snapshots ({} steps, {:.2}s)",
+                            simulation_result.tag,
+                            simulation_result.id,
+                            simulation_result.snapshots.len(),
+                            simulation_result.total_steps,
+                            simulation_result.duration_seconds
+                        );
+                    }
+                }
+            }
+        }
+
+        // Finalize any remaining simulations
+        for (_simulation_id, collector) in collectors {
+            let simulation_result = collector.finalize();
+            save_data(
+                &simulation_result,
+                &get_data_path(DataType::Simulation, &simulation_result.tag, &simulation_result.id)
+            ).map_err(|e| e.to_string())?;
+            
+            println!(
+                "Simulation '{}' (ID: {}) auto-finalized with {} snapshots",
+                simulation_result.tag,
+                simulation_result.id,
+                simulation_result.snapshots.len()
+            );
+        }
+
+        Ok(())
+    })
 }
 
-/// Enumerates all simulation runs and verifies their status
-pub fn enumerate_simulation_runs() -> Result<Vec<SimulationStatus>, Box<dyn std::error::Error>> {
+/// Message types for the dynamic receiver thread
+#[derive(Debug, Clone)]
+pub enum SimulationMessage {
+    /// Initialize a new simulation collector
+    Init {
+        id: usize,
+        tag: String,
+        ensemble_id: usize,
+        params: SimulationParams,
+    },
+    /// Add a snapshot to an existing simulation
+    Snapshot {
+        simulation_id: usize,
+        snapshot: SimulationSnapshot,
+    },
+    /// Finalize and save a simulation
+    Finalize {
+        simulation_id: usize,
+    },
+}
+
+/// Lists all simulation files and extracts their tags and IDs
+/// 
+/// This function scans the `./data/simulation/` directory for all `.bin` files,
+/// parses their filenames to extract tag and ID information, and validates
+/// each file by loading it. Only successfully loadable simulations are included
+/// in the results.
+/// 
+/// The function expects filenames in the format `{tag}-{id}.bin` and will skip
+/// any files that don't match this pattern. Files that cannot be deserialized
+/// will cause the function to panic (expected behavior for data validation).
+///
+/// # Returns
+/// 
+/// * `Ok(Vec<(String, usize)>)` - A vector of tuples containing (tag, id) for each valid simulation
+/// * `Err(Box<dyn std::error::Error>)` - Error if directory cannot be read
+/// 
+/// # Panics
+/// 
+/// This function will panic if it encounters corrupted simulation files that cannot
+/// be deserialized. This is the expected behavior for data integrity validation.
+pub fn list_simulation_tags_and_ids() -> Result<Vec<(String, usize)>, Box<dyn std::error::Error>> {
     let simulation_dir = Path::new("./data/simulation");
-
+    
     if !simulation_dir.exists() {
         return Ok(Vec::new());
     }
 
-    let mut statuses = Vec::new();
-
+    let mut results = Vec::new();
+    
     for entry in fs::read_dir(simulation_dir)? {
         let entry = entry?;
         let path = entry.path();
-
-        if path.is_dir() {
-            let status = verify_simulation_run(&path);
-            statuses.push(status);
+        
+        // Skip if not a .bin file
+        if !path.extension().map_or(false, |ext| ext == "bin") {
+            continue;
         }
-    }
 
-    // Sort by start time (newest first)
-    statuses.sort_by(|a, b| match (&a.metadata, &b.metadata) {
-        (Some(meta_a), Some(meta_b)) => meta_b.started_at.cmp(&meta_a.started_at),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        (None, None) => a.path.cmp(&b.path),
-    });
+        // Extract filename without extension
+        let file_name = match path.file_stem().and_then(|name| name.to_str()) {
+            Some(name) => name,
+            None => continue,
+        };
 
-    Ok(statuses)
-}
+        // Parse filename format: {tag}-{id}
+        let dash_pos = match file_name.rfind('-') {
+            Some(pos) => pos,
+            None => continue,
+        };
 
-/// Verifies the status of a simulation run directory
-fn verify_simulation_run(path: &Path) -> SimulationStatus {
-    let tag = path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("unknown")
-        .to_string();
+        let tag = file_name[..dash_pos].to_string();
+        let id_str = &file_name[dash_pos + 1..];
+        
+        let id = match id_str.parse::<usize>() {
+            Ok(id) => id,
+            Err(_) => continue,
+        };
 
-    match load_metadata(&tag) {
-        Ok(metadata) => {
-            // Try to count frames
-            let frame_count = match load_frames(&tag) {
-                Ok(frames) => frames.len(),
-                Err(_) => 0,
-            };
-
-            SimulationStatus {
-                path: path.to_path_buf(),
-                is_valid: true,
-                error: None,
-                metadata: Some(metadata),
-                frame_count,
+        // Load the simulation to verify it's valid and get the actual tag and id
+        match load_simulation(&tag, &id) {
+            Ok(simulation) => {
+                results.push((simulation.tag, simulation.id));
+            }
+            Err(_) => {
+                unreachable!("Failed to load simulation")
             }
         }
-        Err(e) => SimulationStatus {
-            path: path.to_path_buf(),
-            is_valid: false,
-            error: Some(e.to_string()),
-            metadata: None,
-            frame_count: 0,
-        },
     }
+    
+    Ok(results)
 }
 
-/// Gets the directory path for a simulation run with the given tag
-fn get_simulation_run_path(tag: &str) -> PathBuf {
-    Path::new("./data/simulation").join(tag)
+/// Loads simulation data from a binary file
+/// 
+/// This function deserializes a SimulationResult from disk using the standardized
+/// file path format. It performs existence checks and handles file IO errors
+/// gracefully while allowing deserialization errors to panic (expected behavior
+/// for data integrity validation).
+///
+/// # Arguments
+/// 
+/// * `tag` - Tag name of the simulation to load
+/// * `id` - ID of the simulation to load
+/// 
+/// # Returns
+/// 
+/// * `Ok(SimulationResult)` - Successfully loaded and deserialized simulation data
+/// * `Err(Box<dyn std::error::Error>)` - File not found or IO error
+/// 
+/// # Panics
+/// 
+/// This function will panic if the file exists but contains corrupted data that
+/// cannot be deserialized. This is the expected behavior for data integrity validation.
+pub fn load_simulation(tag: &str, id: &usize) -> Result<SimulationResult, Box<dyn std::error::Error>> {
+    let file_path = get_data_path(DataType::Simulation, tag, id);
+    load_data(&file_path)
 }
 
-/// Lists all available simulation run tags
-pub fn list_simulation_tags() -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let statuses = enumerate_simulation_runs()?;
-    let tags: Vec<String> = statuses
-        .into_iter()
-        .filter_map(|status| {
-            if status.is_valid {
-                status.metadata.map(|meta| meta.tag)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    Ok(tags)
+/// Lists all available simulation results by tag
+/// 
+/// Groups simulations by their tag for easy discovery and batch processing.
+/// 
+/// # Returns
+/// 
+/// * `Ok(HashMap<String, Vec<usize>>)` - Map from tag to list of simulation IDs
+/// * `Err(Box<dyn std::error::Error>)` - Error if directory cannot be read
+pub fn list_simulations_by_tag() -> Result<std::collections::HashMap<String, Vec<usize>>, Box<dyn std::error::Error>> {
+    let tag_id_pairs = list_simulation_tags_and_ids()?;
+    let mut results = std::collections::HashMap::new();
+    
+    for (tag, id) in tag_id_pairs {
+        results.entry(tag).or_insert_with(Vec::new).push(id);
+    }
+    
+    Ok(results)
 }
