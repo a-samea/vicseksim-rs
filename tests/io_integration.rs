@@ -1,8 +1,3 @@
-//! Integration tests for the flocking simulation library
-//!
-//! These tests verify that the library components work together correctly
-//! and that the overall simulation behavior is physically reasonable.
-
 use flocking_lib::ensemble::{generate, EnsembleGenerationRequest, EnsembleGenerationParams};
 use flocking_lib::io::ensemble::{start_receiver_thread, list_ensemble_tags_and_ids, load_ensemble};
 use flocking_lib::io::simulation::{FrameCollector, list_simulation_tags_and_ids, load_simulation};
@@ -14,12 +9,6 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 use std::fs;
-
-/// Test that ensemble generation produces valid configurations
-#[test]
-fn test_ensemble_generation() {
-    assert!(true);
-}
 
 /// Integration test for ensemble generation and IO persistence
 /// 
