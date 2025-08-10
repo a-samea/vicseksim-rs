@@ -1,6 +1,7 @@
 use clap::Parser;
 use flocking_lib::cli::{Cli, Commands};
-use flocking_lib::{ensemble::{self, EnsembleGenerationRequest, EnsembleGenerationParams}, io};
+use flocking_lib::{ensemble, io};
+use flocking_lib::io::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -157,7 +158,7 @@ fn main() -> Result<(), String> {
             );
             println!("Ensembles saved to: ./data/ensemble/");
 
-            Ok(())
+            Ok::<(), String>(())
         }
 
         Commands::Simulate {
@@ -175,7 +176,7 @@ fn main() -> Result<(), String> {
             println!("Noise parameter: {}", noise);
 
             // Implementation will be added in Stage 2
-            unimplemented!("Call simulation logic here.");
+            unimplemented!("Call simulation logic here.")
         }
 
         Commands::Analyze {
@@ -188,7 +189,7 @@ fn main() -> Result<(), String> {
             println!("Saving analysis results to: {:?}", output_dir);
             println!("Analysis types: {:?}", analysis_types);
             // Implementation will be added in Stage 3
-            unimplemented!("Call analysis logic here.");
+            unimplemented!("Call analysis logic here.")
         }
     };
 

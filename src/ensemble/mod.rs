@@ -1,89 +1,115 @@
-//! # Ensemble Module - Initial Particle Distribution Generation
+
+//! # Ensemble Generation Module
 //!
-//! This module provides functionality for generating initial ensembles of birds (particles)
-//! distributed uniformly on a spherical surface for flocking simulations. The module implements
-//! a rejection sampling algorithm to ensure proper spatial separation between particles while
-//! maintaining uniform distribution on the sphere.
+//! This module provides functionality for generating ensembles of birds (particles) for flocking
+//! simulations. An ensemble represents a collection of birds positioned on a spherical surface
+//! with specified constraints and initial conditions.
 //!
-//! ## Core Functionality
+//! ## Overview
 //!
-//! The primary function `generate` creates N particles positioned on a sphere of radius R,
-//! each with speed S, using spherical coordinates with uniform random distributions:
+//! The ensemble module is responsible for:
+//! - Generating collections of birds with uniform spatial distribution on spherical surfaces
+//! - Enforcing minimum distance constraints between particles to prevent overlapping
+//! - Providing structured data types for ensemble metadata and generation parameters
+//! - Supporting concurrent ensemble generation through MPSC channels
+//! - Integrating with the IO system for persistence and batch processing
 //!
-//! - **Azimuthal angle (φ)**: Uniform distribution [0, 2π]
-//! - **Velocity direction (α)**: Uniform distribution [0, 2π]
-//! - **Polar angle (θ)**: Derived from uniform cos(θ) ∈ [-1, 1] to ensure uniform surface distribution
+//! ## Key Concepts
 //!
-//! ## Collision Avoidance
+//! ### Spherical Distribution
+//! Birds are distributed uniformly on the surface of a sphere using proper spherical coordinate
+//! sampling. This ensures no clustering around poles and maintains rotational symmetry.
 //!
-//! The module implements a rejection sampling strategy to maintain minimum distance constraints
-//! between particles. When a new particle is generated too close to existing particles, it is
-//! discarded and a new one is generated until the minimum distance requirement is satisfied.
+//! ### Rejection Sampling
+//! To maintain minimum distance constraints, the module uses rejection sampling - candidate
+//! birds that are too close to existing birds are discarded and new positions are generated.
 //!
-//! ## Thread Communication
+//! ### Ensemble Metadata
+//! Each ensemble includes comprehensive metadata including unique identifiers, generation
+//! parameters, timestamps, and tags for organization and batch processing.
 //!
-//! The generated ensemble is transmitted via MPSC (Multi-Producer, Single-Consumer) channels
-//! to separate IO handling, enabling asynchronous processing and file operations. Each ensemble
-//! includes identification metadata (ID and tag) to ensure proper tracking in multithreaded
-//! environments where multiple ensembles are generated concurrently.
+//! ## Usage Patterns
 //!
-//! ## Multithreaded Design
-//!
-//! The function signature is optimized for multithreaded ensemble generation:
-//! - Uses structured request/result pattern for clear data flow
-//! - Includes unique IDs to prevent mixing of ensemble data
-//! - Maintains all generation parameters in the result for traceability
-//!
-//! ## Usage Example
-//!
+//! ### Single Ensemble Generation
 //! ```rust
 //! use std::sync::mpsc;
-//! use flocking_lib::ensemble::{self, EnsembleGenerationRequest, EnsembleGenerationParams};
+//! use flocking_lib::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
 //!
 //! let (tx, rx) = mpsc::channel();
-//!
+//! 
 //! let request = EnsembleGenerationRequest {
-//!     id: 0,
+//!     id: 1,
 //!     tag: "test_ensemble".to_string(),
 //!     params: EnsembleGenerationParams {
-//!         n_particles: 1000,
+//!         n_particles: 50,
 //!         radius: 1.0,
-//!         speed: 2.0,
+//!         speed: 1.5,
 //!         min_distance: 0.1,
 //!     },
 //! };
 //!
-//! // Generate ensemble in a separate thread
-//! ensemble::generate(request, tx).unwrap();
+//! // Generate ensemble in background thread
+//! std::thread::spawn(move || {
+//!     ensemble::generate(request, tx).unwrap();
+//! });
 //!
-//! // Receive the generated ensemble with metadata
+//! // Receive completed ensemble
 //! let result = rx.recv().unwrap();
-//! println!("Generated ensemble '{}' with {} birds", result.tag, result.birds.len());
+//! println!("Generated {} birds", result.birds.len());
 //! ```
+//!
+//! ### Batch Processing
+//! The module integrates with the IO system to support batch generation and persistence:
+//! ```rust
+//! // Multiple ensembles can be generated concurrently and automatically saved
+//! let requests = vec![
+//!     EnsembleGenerationRequest { id: 1, tag: "sparse".to_string(), /* ... */ },
+//!     EnsembleGenerationRequest { id: 2, tag: "dense".to_string(), /* ... */ },
+//! ];
+//! 
+//! // IO module handles concurrent generation and persistence
+//! ```
+//!
+//! ## Performance Considerations
+//!
+//! - **Time Complexity**: O(n²) worst case due to distance checking during rejection sampling
+//! - **Memory Usage**: Pre-allocated vectors minimize memory fragmentation
+//! - **Parallelization**: Thread-safe design allows multiple ensembles to be generated concurrently
+//! - **Distance Constraints**: Tighter `min_distance` values increase generation time exponentially
+//!
+//! ## Integration Points
+//!
+//! - **Bird Module**: Uses `Bird::from_spherical()` and `Bird::distance_from()` methods
+//! - **IO Module**: Provides `EnsembleResult` for persistence and loading
+//! - **Simulation Module**: Generated ensembles serve as initial conditions for simulations
+//! - **Analysis Module**: Ensemble metadata enables batch analysis and comparison
 
 use crate::bird::Bird;
 use rand::prelude::*;
 use rand_distr::Uniform;
+use serde::{Serialize, Deserialize};
 use std::f64::consts::PI;
 use std::sync::mpsc;
 
-pub mod tests;
 
 /// Ensemble generation result containing the generated birds and metadata
-#[derive(Debug, Clone)]
+/// This is the unified structure used by both ensemble generation and IO persistence
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnsembleResult {
     /// Unique identifier for this ensemble
     pub id: usize,
-    /// Tag name for the ensemble (used for file naming)
+    /// Tag name for the ensemble (used for file naming, batch processing)
     pub tag: String,
     /// Generated birds
     pub birds: Vec<Bird>,
     /// Generation parameters for reference
     pub params: EnsembleGenerationParams,
+    /// Timestamp when ensemble was created
+    pub created_at: u64,
 }
 
 /// Parameters used for ensemble generation
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct EnsembleGenerationParams {
     pub n_particles: usize,
     pub radius: f64,
@@ -101,6 +127,9 @@ pub struct EnsembleGenerationRequest {
     /// Generation parameters
     pub params: EnsembleGenerationParams,
 }
+
+/// Unit tests for the ensemble module
+pub mod tests;
 
 /// Generates an ensemble of N birds uniformly distributed on a spherical surface.
 ///
@@ -147,7 +176,7 @@ pub struct EnsembleGenerationRequest {
 ///
 /// ```rust
 /// use std::sync::mpsc;
-/// use flocking_lib::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
+/// use flocking_lib::io::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
 ///
 /// let (tx, rx) = mpsc::channel();
 ///
@@ -196,12 +225,13 @@ pub fn generate(
         }
     }
 
-    // Create the ensemble result with metadata
+    // Create the ensemble result with metadata (timestamps will be added by IO module)
     let result = EnsembleResult {
         id: request.id,
         tag: request.tag,
         birds,
         params: request.params,
+        created_at: 0, // Will be set by IO module
     };
 
     // Send the complete ensemble result via MPSC to IO

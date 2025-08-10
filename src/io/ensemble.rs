@@ -18,8 +18,8 @@
 //! // Setup channel to receive ensemble from generation
 //! let (tx, rx) = mpsc::channel();
 //!
-//! // Start ensemble receiver
-//! let  _ = ensemble::start_receiver(rx, "my_ensemble".to_string(), 1.0, 1.0, 0.1);
+//! // Start ensemble receiver that handles EnsembleResult from ensemble module
+//! let handle = ensemble::start_receiver_thread(rx);
 //! ```
 
 use crate::bird::Bird;
@@ -28,35 +28,9 @@ use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Ensemble data structure containing birds and metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnsembleData {
-    /// Vector of birds in the ensemble
-    pub birds: Vec<Bird>,
-    /// Metadata about the ensemble
-    pub metadata: EnsembleMetadata,
-}
-
-/// Metadata associated with each ensemble
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnsembleMetadata {
-    /// User-defined tag for the ensemble
-    pub tag: String,
-    /// Number of birds in the ensemble
-    pub num_birds: usize,
-    /// Sphere radius used for generation
-    pub radius: f64,
-    /// Speed of all birds
-    pub speed: f64,
-    /// Minimum distance constraint used during generation
-    pub min_distance: f64,
-    /// Timestamp when ensemble was created
-    pub created_at: u64,
-    /// File format version for compatibility
-    pub version: String,
-}
 
 /// Status of an ensemble file
 #[derive(Debug, Clone)]
@@ -71,7 +45,112 @@ pub struct EnsembleStatus {
     pub metadata: Option<EnsembleMetadata>,
 }
 
-/// Starts a receiver thread that listens for ensemble data from MPSC channel
+
+/// Starts a receiver thread that listens for EnsembleResult from the ensemble module
+/// and saves each ensemble to disk automatically
+///
+/// # Arguments
+///
+/// * `rx` - MPSC receiver channel for EnsembleResult data
+///
+/// # Returns
+///
+/// * A join handle for the spawned receiver thread
+pub fn start_receiver_thread(
+    rx: mpsc::Receiver<EnsembleResult>,
+) -> thread::JoinHandle<Result<(), String>> {
+    thread::spawn(move || {
+        // Ensure ensemble directory exists
+        crate::io::ensure_data_directories().map_err(|e| e.to_string())?;
+
+        // Process each ensemble result as it arrives
+        while let Ok(ensemble_result) = rx.recv() {
+            // Add timestamp info
+            let ensemble_with_metadata = EnsembleResult {
+                created_at: SystemTime::now().duration_since(UNIX_EPOCH)
+                    .map_err(|e| e.to_string())?.as_secs(),
+                ..ensemble_result
+            };
+
+            // Save to file using the tag
+            save_ensemble_result(&ensemble_with_metadata).map_err(|e| e.to_string())?;
+
+            println!(
+                "Ensemble '{}' (ID: {}) saved successfully with {} birds",
+                ensemble_with_metadata.tag,
+                ensemble_with_metadata.id,
+                ensemble_with_metadata.birds.len()
+            );
+        }
+
+        Ok(())
+    })
+}
+
+/// Saves EnsembleResult data to a binary file
+///
+/// # Arguments
+///
+/// * `ensemble` - The ensemble result to save
+pub fn save_ensemble_result(ensemble: &EnsembleResult) -> Result<(), Box<dyn std::error::Error>> {
+    let file_path = get_ensemble_path(&ensemble.tag);
+
+    // Create parent directory if it doesn't exist
+    if let Some(parent) = file_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let file = File::create(&file_path)?;
+    let writer = BufWriter::new(file);
+
+    bincode::serialize_into(writer, ensemble)?;
+
+    Ok(())
+}
+
+/// Loads ensemble data as EnsembleResult from a binary file
+///
+/// # Arguments
+///
+/// * `tag` - Tag name of the ensemble to load
+pub fn load_ensemble_result(tag: &str) -> Result<EnsembleResult, Box<dyn std::error::Error>> {
+    let file_path = get_ensemble_path(tag);
+
+    if !file_path.exists() {
+        return Err(format!("Ensemble file not found: {}", file_path.display()).into());
+    }
+
+    let file = File::open(&file_path)?;
+    let reader = BufReader::new(file);
+
+    // Try loading as EnsembleResult first (new format)
+    match bincode::deserialize_from::<_, EnsembleResult>(reader) {
+        Ok(ensemble) => Ok(ensemble),
+        Err(_) => {
+            // Fallback: try loading as legacy EnsembleData and convert
+            let file = File::open(&file_path)?;
+            let reader = BufReader::new(file);
+            let legacy_data: EnsembleData = bincode::deserialize_from(reader)?;
+            
+            // Convert legacy format to new format
+            Ok(EnsembleResult {
+                id: 0, // Legacy files don't have IDs
+                tag: legacy_data.metadata.tag,
+                birds: legacy_data.birds,
+                params: EnsembleGenerationParams {
+                    n_particles: legacy_data.metadata.num_birds,
+                    radius: legacy_data.metadata.radius,
+                    speed: legacy_data.metadata.speed,
+                    min_distance: legacy_data.metadata.min_distance,
+                },
+                created_at: legacy_data.metadata.created_at,
+                version: legacy_data.metadata.version,
+            })
+        }
+    }
+}
+
+/// Legacy function: Starts a receiver thread that listens for ensemble data from MPSC channel
 /// and saves it to disk with the specified tag
 ///
 /// # Arguments
@@ -220,7 +299,7 @@ fn load_ensemble_from_path(path: &Path) -> Result<EnsembleData, Box<dyn std::err
 }
 
 /// Gets the file path for an ensemble with the given tag
-fn get_ensemble_path(tag: &str) -> PathBuf {
+pub fn get_ensemble_path(tag: &str) -> PathBuf {
     Path::new("./data/ensemble").join(format!("{}.bin", tag))
 }
 
@@ -239,4 +318,95 @@ pub fn list_ensemble_tags() -> Result<Vec<String>, Box<dyn std::error::Error>> {
         .collect();
 
     Ok(tags)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simple_ensemble_workflow() {
+        // Create a simple test ensemble manually  
+        let ensemble = EnsembleResult {
+            id: 1,
+            tag: "simple_workflow_test".to_string(),
+            birds: Vec::new(), // Empty for simplicity
+            params: EnsembleGenerationParams {
+                n_particles: 0,
+                radius: 1.0,
+                speed: 1.0,
+                min_distance: 0.1,
+            },
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        };
+
+        // Save the ensemble
+        save_ensemble_result(&ensemble).expect("Should save ensemble");
+
+        // Verify that ensemble was saved to disk
+        let saved_tags = list_ensemble_tags().expect("Should be able to list ensemble tags");
+        assert!(saved_tags.contains(&"simple_workflow_test".to_string()), 
+                "simple_workflow_test should be saved");
+
+        // Test loading ensemble back from disk
+        let loaded_ensemble = load_ensemble_result("simple_workflow_test")
+            .expect("Should be able to load ensemble");
+
+        // Verify the loaded data matches expectations
+        assert_eq!(loaded_ensemble.tag, "simple_workflow_test", "Tag should match");
+        assert_eq!(loaded_ensemble.id, 1, "ID should match");
+        assert!(loaded_ensemble.created_at > 0, "Should have creation timestamp");
+        assert!(!loaded_ensemble.version.is_empty(), "Should have version info");
+
+        // Clean up test file
+        let file_path = get_ensemble_path("simple_workflow_test");
+        if file_path.exists() {
+            std::fs::remove_file(file_path).ok();
+        }
+
+        println!("✓ Simple ensemble workflow test passed!");
+    }
+
+    #[test]
+    fn test_ensemble_save_and_load() {
+        // Create a simple ensemble result for testing
+        let test_ensemble = EnsembleResult {
+            id: 42,
+            tag: "save_load_test".to_string(),
+            birds: Vec::new(), // Empty for simplicity
+            params: EnsembleGenerationParams {
+                n_particles: 0,
+                radius: 1.0,
+                speed: 1.0,
+                min_distance: 0.1,
+            },
+            created_at: 1234567890,
+            version: "test".to_string(),
+        };
+
+        // Save the ensemble
+        save_ensemble_result(&test_ensemble).expect("Should save successfully");
+
+        // Load it back
+        let loaded = load_ensemble_result("save_load_test").expect("Should load successfully");
+
+        // Verify data integrity
+        assert_eq!(loaded.id, 42);
+        assert_eq!(loaded.tag, "save_load_test");
+        assert_eq!(loaded.birds.len(), 0);
+        assert_eq!(loaded.created_at, 1234567890);
+        assert_eq!(loaded.version, "test");
+
+        // Clean up
+        let file_path = get_ensemble_path("save_load_test");
+        if file_path.exists() {
+            std::fs::remove_file(file_path).ok();
+        }
+
+        println!("✓ Ensemble save and load test passed!");
+    }
 }
