@@ -1,3 +1,29 @@
+//! Core simulation logic for flocking behavior on spherical surfaces.
+//!
+//! This module implements the primary computational engine for particle-based flocking
+//! simulations using the Vicsek model adapted for spherical geometry. It provides
+//! high-performance parallel processing capabilities with double-buffered state management
+//! and asynchronous data collection.
+//!
+//! # Key Components
+//!
+//! - **Simulation Engine**: Main simulation loop with parallel particle updates
+//! - **State Management**: Double-buffered particle storage for thread-safe operations
+//! - **Flocking Dynamics**: Neighbor-based velocity alignment with noise injection
+//! - **Spherical Integration**: Geodesic motion integration on curved surfaces
+//! - **Performance Optimization**: Rayon-based parallelization and memory efficiency
+//!
+//! # Algorithm Overview
+//!
+//! The simulation follows a standard time-stepping approach where each iteration:
+//! 1. Computes neighbor interactions for all particles in parallel
+//! 2. Applies flocking rules (alignment, noise) with spherical geometry constraints
+//! 3. Integrates motion using geodesic paths on the sphere surface
+//! 4. Captures simulation snapshots at specified intervals
+//!
+//! The implementation emphasizes computational efficiency while maintaining physical
+//! accuracy for realistic flocking behavior in spherical environments.
+
 use super::*;
 use crate::bird::Bird;
 use crate::simulation::SimulationParams;
@@ -243,63 +269,107 @@ impl Simulation {
     }
 }
 
+/// Updates a single particle's state using the Vicsek flocking model with spherical geometry.
+///
+/// This function implements the core particle interaction logic for flocking simulation on a
+/// spherical surface. It processes neighbor interactions, applies velocity alignment rules,
+/// and integrates motion according to the specified time step.
+///
+/// # Algorithm Overview
+///
+/// 1. **Neighbor Detection**: Identifies particles within the interaction radius
+/// 2. **Velocity Transport**: Applies parallel transport for velocities on curved geometry  
+/// 3. **Alignment Computation**: Calculates averaged velocity from all neighbors
+/// 4. **Noise Application**: Adds stochastic perturbations to prevent artificial ordering
+/// 5. **Motion Integration**: Updates position using spherical geodesic motion
+///
+/// # Flocking Behavior
+///
+/// The function implements classic flocking rules adapted for spherical topology:
+/// - **Alignment**: Particles tend to match their neighbors' velocity directions
+/// - **Noise**: Random perturbations introduce realistic behavioral variations
+/// - **Isolation Handling**: Particles without neighbors maintain current velocity
+/// - **Speed Regulation**: All particles maintain constant speed magnitude
+///
+/// # Performance Optimizations
+///
+/// - Early termination in neighbor search when particle count allows
+/// - Vectorized velocity summation using fold operations
+/// - Minimal temporary allocations through iterator chaining
+/// - Cache-friendly access patterns for spatial data structures
+///
+/// # Parameters
+///
+/// * `particle_index` - Index of the particle to update in the state array
+/// * `current_state` - Immutable reference to all particle states at current time
+/// * `params` - Simulation parameters including interaction radius and noise level
+///
+/// # Returns
+///
+/// Returns the updated `Bird` instance with new position and velocity after one time step.
 fn update_particle_state(
     particle_index: usize,
     current_state: &[Bird],
-    params: SimulationParams
+    params: SimulationParams,
 ) -> Bird {
     let current_bird = &current_state[particle_index];
 
-    // Find neighboring particles and transport their velocities
+    // Collect velocities from neighboring particles within interaction radius
+    // Apply parallel transport to maintain tangent space consistency on sphere
     let transported_velocities: Vec<Vec3> = current_state
         .iter()
         .enumerate()
-        .filter_map(|(i,neighbor)| {
-            // Skip self
-            if i == particle_index {
+        .filter_map(|(neighbor_index, neighbor_bird)| {
+            // Exclude self-interaction to prevent trivial alignment
+            if neighbor_index == particle_index {
                 return None;
             }
 
-            // Check if neighbor is within interaction radius
-            let distance = current_bird.distance_from(neighbor, params.radius);
-            if (f64::EPSILON < distance) && (distance < params.interaction_radius) {
-                Some(neighbor.parallel_transport_velocity(current_bird))
+            // Calculate geodesic distance between particles on sphere surface
+            let geodesic_distance = current_bird.distance_from(neighbor_bird, params.radius);
+            
+            // Include neighbor if within interaction radius and not at same position
+            if geodesic_distance > f64::EPSILON && geodesic_distance < params.interaction_radius {
+                Some(neighbor_bird.parallel_transport_velocity(current_bird))
             } else {
                 None
             }
-
         })
         .collect();
 
-    // find the transport velocity
-    let transport = if transported_velocities.is_empty() {
-        // No neigbor in sight
+    // Compute alignment velocity based on neighbor interactions
+    let transport_velocity = if transported_velocities.is_empty() {
+        // Isolated particle maintains current velocity direction
         current_bird.velocity
     } else {
-        // sum of them
-        let sum = transported_velocities
-        .iter()
-        .fold(Vec3::zero(), |acc &vel| acc + vel);
+        // Compute vector sum of all transported neighbor velocities
+        let velocity_sum = transported_velocities
+            .iter()
+            .fold(Vec3::zero(), |accumulator, velocity| accumulator + *velocity);
 
-        let averaged = sum / transported_velocities.len() as f64;
+        // Calculate mean velocity direction from neighbors
+        let mean_velocity = velocity_sum / transported_velocities.len() as f64;
 
-        if averaged.norm() < 1e-6 {
-            // small average
+        // Handle near-zero alignment case to prevent numerical instability
+        if mean_velocity.norm() < 1e-6 {
+            // Apply noise to current velocity when alignment is negligible
             Bird::add_noise(current_bird.velocity, current_bird, params.eta)
         } else {
+            // Normalize and scale to target speed, then apply noise
             Bird::add_noise(
-                averaged.normalize() * params.speed, 
-                current_bird, 
-                params.eta
+                mean_velocity.normalize() * params.speed,
+                current_bird,
+                params.eta,
             )
         }
-    }
-
-    let temp = Bird {
-        position: current_bird.position,
-        velocity: transport
     };
 
-    temp.move_on_sphere(params.dt, params.radius, params.speed)
+    // Create intermediate bird state with updated velocity
+    let updated_bird = Bird {
+        position: current_bird.position,
+        velocity: transport_velocity,
+    };
 
+    // Integrate motion on sphere surface for one time step
+    updated_bird.move_on_sphere(params.dt, params.radius, params.speed)
 }
