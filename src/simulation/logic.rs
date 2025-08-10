@@ -1,15 +1,20 @@
 use crate::bird::Bird;
+use crate::simulation::SimulationParams;
 use crate::vector::Vec3;
- 
- 
-pub fn calculate_new_particle_state(
+
+pub fn update_particle_state(
     particle_index: usize,
     current_state: &[Bird],
-    dt: f64,
-    interaction_radius: f64,
-    eta: f64,
-    speed: f64,
-    radius: f64,
+    params: SimulationParams
+) -> Bird {
+    unimplemented!("This will create a new bird instance for the correct time step")
+}
+ 
+/*  
+pub fn update_particle_state(
+    particle_index: usize,
+    current_state: &[Bird],
+    params: SimulationParams
 ) -> Bird {
     let current_bird = &current_state[particle_index];
 
@@ -61,3 +66,4 @@ pub fn calculate_new_particle_state(
     let updated_bird = Bird::new(current_bird.position, new_velocity);
     updated_bird.move_on_sphere(dt, radius, speed)
 }
+ */

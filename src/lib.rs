@@ -82,7 +82,7 @@ pub mod bird;
 // Complete
 pub mod ensemble;
 pub mod io;
-//pub mod simulation;
+pub mod simulation;
 // Complete
 pub mod vector;
 
