@@ -85,59 +85,6 @@ mod units {
     }
 
     #[test]
-    fn random_angle_noise() {
-        let order_param = 0.5;
-        let sample_size = 10000;
-        let mut angles = Vec::new();
-
-        for _ in 0..sample_size {
-            angles.push(Bird::random_angle_noise(order_param));
-        }
-
-        // Test mean (should be close to 0)
-        let mean: f64 = angles.iter().sum::<f64>() / sample_size as f64;
-        assert!(mean.abs() < 0.05); // Within 5% tolerance
-
-        // Test standard deviation (should be close to order_param)
-        let variance: f64 =
-            angles.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / sample_size as f64;
-        let std_dev = variance.sqrt();
-
-        assert!((std_dev - order_param).abs() < 0.05); // Within 5% tolerance
-
-        // Test with different order parameters
-        let small_order = 0.1;
-        let large_order = 2.0;
-
-        let small_noise = Bird::random_angle_noise(small_order);
-        let large_noise = Bird::random_angle_noise(large_order);
-
-        // These are probabilistic tests, but with high probability:
-        // Small order parameter should produce smaller angles
-        // We just verify the function doesn't panic and returns finite values
-        assert!(small_noise.is_finite());
-        assert!(large_noise.is_finite());
-    }
-
-    #[test]
-    fn random_angle_noise_parameter_validation() {
-        // Test very small positive value (should work)
-        let tiny_param = 1e-10;
-        let result = Bird::random_angle_noise(tiny_param);
-        assert!(result.is_finite());
-
-        // Test normal values
-        let normal_param = 1.0;
-        let result2 = Bird::random_angle_noise(normal_param);
-        assert!(result2.is_finite());
-
-        // Test large values (should still work)
-        let large_param = 100.0;
-        let result3 = Bird::random_angle_noise(large_param);
-        assert!(result3.is_finite());
-    }
-
-    #[test]
     fn add_noise() {
         let radius = 1.0;
         let base_velocity = Vec3::new(1.0, 0.0, 0.0);

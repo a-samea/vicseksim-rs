@@ -329,7 +329,7 @@ pub struct Bird {
 Given that the struct implements the \texttt{Copy} and \texttt{Clone} traits, it can be efficiently passed by value or duplicated, thereby avoiding ownership complexities. Spherical operations are optimized and performed through its inherent methods.
 \subsubsection{Constructors and Static Methods}
 \begin{itemize}
-    \item \textbf{\texttt{new(position: Vec3, velocity: Vec3)}}
+    \item \textbf{\texttt{new(position: Vec3, velocity: Vec3)  (private)}} 
     
     Creates a new bird with the specified position and velocity vectors. It is the responsibility of the caller to ensure that the position is on the sphere's surface and the velocity is tangent to the sphere at that point. \emph{Not safe to use}
 
@@ -337,7 +337,7 @@ Given that the struct implements the \texttt{Copy} and \texttt{Clone} traits, it
 
     Returns a new bird instance with its position and velocity initialized based on spherical coordinates. This is the recommended way to create a bird in the simulation.
 
-    \item \textbf{\texttt{random\_angle\_noise(order\_parameter: f64) : f64}}
+    \item \textbf{\texttt{random\_angle\_noise(order\_parameter: f64) : f64  (private)}}
     
     This function produces normally distributed random angles used to introduce noise into bird velocity directions, simulating environmental perturbations and individual behavioral variations in flocking systems.
 \end{itemize}

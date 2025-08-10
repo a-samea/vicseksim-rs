@@ -134,7 +134,7 @@ impl Bird {
     /// let chaos = Bird::random_angle_noise(1.0); // High noise for disordered motion
     /// ```
     #[inline]
-    pub fn random_angle_noise(order_parameter: f64) -> f64 {
+    fn random_angle_noise(order_parameter: f64) -> f64 {
         use rand::prelude::*;
         use rand_distr::Normal;
         if order_parameter < f64::EPSILON {
@@ -260,16 +260,16 @@ impl Bird {
 
         // Calculate new position using geodesic motion
         let angle = speed * dt / radius;
-        let velocity_normalized = self.velocity.normalize();
+
         let new_position =
-            self.position * angle.cos() + (radius * angle.sin()) * velocity_normalized;
+            self.position * angle.cos() + (radius * angle.sin()) * self.velocity.normalize();
 
-        // Create temporary bird at new position to use for parallel transport
-        let temp_bird = Bird::new(new_position, Vec3::zero());
+        let new_velocity = 
+            self.velocity * angle.cos() - (speed * angle.sin()) * self.position.normalize();
 
-        // Transport velocity from old position to new position
-        let transported_velocity = self.parallel_transport_velocity(&temp_bird);
-
-        Bird::new(new_position, transported_velocity)
+        Bird::new(
+            new_position,
+            new_velocity
+        )
     }
 }
