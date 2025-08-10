@@ -58,18 +58,6 @@
 //! println!("Generated {} birds", result.birds.len());
 //! ```
 //!
-//! ### Batch Processing
-//! The module integrates with the IO system to support batch generation and persistence:
-//! ```rust
-//! // Multiple ensembles can be generated concurrently and automatically saved
-//! let requests = vec![
-//!     EnsembleGenerationRequest { id: 1, tag: "sparse".to_string(), /* ... */ },
-//!     EnsembleGenerationRequest { id: 2, tag: "dense".to_string(), /* ... */ },
-//! ];
-//! 
-//! // IO module handles concurrent generation and persistence
-//! ```
-//!
 //! ## Performance Considerations
 //!
 //! - **Time Complexity**: O(n²) worst case due to distance checking during rejection sampling
@@ -87,10 +75,9 @@
 use crate::bird::Bird;
 use rand::prelude::*;
 use rand_distr::Uniform;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use std::sync::mpsc;
-
 
 /// Ensemble generation result containing the generated birds and metadata
 /// This is the unified structure used by both ensemble generation and IO persistence
@@ -176,7 +163,7 @@ pub mod tests;
 ///
 /// ```rust
 /// use std::sync::mpsc;
-/// use flocking_lib::io::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
+/// use flocking_lib::ensemble::{self, EnsembleGenerationRequest, EnsembleGenerationParams};
 ///
 /// let (tx, rx) = mpsc::channel();
 ///
@@ -212,11 +199,18 @@ pub fn generate(
         let theta = cos_theta.acos(); // polar angle [0, π]
 
         // Create new bird from spherical coordinates
-        let candidate_bird = Bird::from_spherical(request.params.radius, theta, phi, request.params.speed, alpha);
+        let candidate_bird = Bird::from_spherical(
+            request.params.radius,
+            theta,
+            phi,
+            request.params.speed,
+            alpha,
+        );
 
         // Check if this bird is too close to any existing bird
         let too_close = birds.iter().any(|existing_bird| {
-            candidate_bird.distance_from(existing_bird, request.params.radius) < request.params.min_distance
+            candidate_bird.distance_from(existing_bird, request.params.radius)
+                < request.params.min_distance
         });
 
         // If not too close, add to ensemble

@@ -16,43 +16,12 @@
 //! ## File Organization
 //!
 //! Ensemble files are stored in the `./data/ensemble/` directory with the naming convention:
-//! ```
+//! ```text
 //! {tag}-{id}.bin
 //! ```
 //! Where:
 //! - `tag`: A string identifier for the ensemble type or experiment
 //! - `id`: A unique numeric identifier for the specific ensemble instance
-//!
-//! ## Usage Patterns
-//!
-//! ### Single Ensemble Operations
-//! ```rust
-//! use flocking_lib::io::ensemble::{save_ensemble, load_ensemble};
-//! use flocking_lib::ensemble::EnsembleResult;
-//!
-//! // Save an ensemble
-//! let ensemble: EnsembleResult = /* ... */;
-//! save_ensemble(&ensemble)?;
-//!
-//! // Load an ensemble
-//! let loaded = load_ensemble("test_tag", &42)?;
-//! ```
-//!
-//! ### Batch Processing
-//! ```rust
-//! use flocking_lib::io::ensemble::{start_receiver_thread, list_ensemble_tags_and_ids};
-//! use std::sync::mpsc;
-//!
-//! // Set up concurrent saving
-//! let (tx, rx) = mpsc::channel();
-//! let handle = start_receiver_thread(rx);
-//!
-//! // List all available ensembles
-//! let ensembles = list_ensemble_tags_and_ids()?;
-//! for (tag, id) in ensembles {
-//!     println!("Found ensemble: {} (ID: {})", tag, id);
-//! }
-//! ```
 //!
 //! ## Integration Points
 //!
@@ -113,15 +82,6 @@ fn get_ensemble_path(tag: &str, id: &usize) -> PathBuf {
 /// 
 /// * `Ok(())` - Successfully saved the ensemble
 /// * `Err(Box<dyn std::error::Error>)` - File system or serialization error
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use flocking_lib::io::ensemble::save_ensemble;
-/// 
-/// let ensemble: EnsembleResult = /* ... */;
-/// save_ensemble(&ensemble)?;
-/// ```
 pub fn save_ensemble(ensemble: &EnsembleResult) -> Result<(), Box<dyn std::error::Error>> {
     let file_path = get_ensemble_path(&ensemble.tag, &ensemble.id);
 
@@ -155,22 +115,6 @@ pub fn save_ensemble(ensemble: &EnsembleResult) -> Result<(), Box<dyn std::error
 /// # Returns
 ///
 /// * A join handle for the spawned receiver thread that returns `Result<(), String>`
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use flocking_lib::io::ensemble::start_receiver_thread;
-/// use std::sync::mpsc;
-/// 
-/// let (tx, rx) = mpsc::channel();
-/// let handle = start_receiver_thread(rx);
-/// 
-/// // Send ensembles from worker threads
-/// // tx.send(ensemble)?;
-/// 
-/// // Wait for all saves to complete
-/// handle.join().unwrap()?;
-/// ```
 pub fn start_receiver_thread(
     rx: mpsc::Receiver<EnsembleResult>,
 ) -> thread::JoinHandle<Result<(), String>> {
@@ -217,17 +161,6 @@ pub fn start_receiver_thread(
 /// 
 /// * `Ok(Vec<(String, usize)>)` - A vector of tuples containing (tag, id) for each valid ensemble
 /// * `Err(Box<dyn std::error::Error>)` - Error if directory cannot be read
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use flocking_lib::io::ensemble::list_ensemble_tags_and_ids;
-/// 
-/// let ensembles = list_ensemble_tags_and_ids()?;
-/// for (tag, id) in ensembles {
-///     println!("Found ensemble: {} (ID: {})", tag, id);
-/// }
-/// ```
 /// 
 /// # Panics
 /// 
@@ -301,15 +234,6 @@ pub fn list_ensemble_tags_and_ids() -> Result<Vec<(String, usize)>, Box<dyn std:
 /// 
 /// * `Ok(EnsembleResult)` - Successfully loaded and deserialized ensemble data
 /// * `Err(Box<dyn std::error::Error>)` - File not found or IO error
-/// 
-/// # Examples
-/// 
-/// ```rust
-/// use flocking_lib::io::ensemble::load_ensemble;
-/// 
-/// let ensemble = load_ensemble("test_ensemble", &42)?;
-/// println!("Loaded ensemble with {} birds", ensemble.birds.len());
-/// ```
 /// 
 /// # Panics
 /// 

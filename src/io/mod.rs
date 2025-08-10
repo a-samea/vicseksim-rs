@@ -12,6 +12,7 @@
 //! pipeline stage.
 
 pub mod analysis;
+// Completed integration
 pub mod ensemble;
 //pub mod simulation;
 
