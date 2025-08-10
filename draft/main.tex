@@ -205,8 +205,8 @@ The primary objective of this simulation is to identify phase changes within the
 The simulation is implemented in the Rust programming language. The library's functionality is organized into the following submodules:
 \begin{itemize}
     \item Core Physics: \begin{itemize}
-        \item bird: Defines the fundamental particle representation and their associated physics.
         \item vector: Provides optimized 3D vector mathematics crucial for spherical geometry.
+        \item bird: Defines the fundamental particle representation and their associated physics.
     \end{itemize}
     \item Simulation Engine: \begin{itemize}
         \item simulation: Houses the high-performance, parallelized simulation loop and state management.
@@ -316,11 +316,48 @@ The \texttt{Vec3} structure provides a rich set of methods for vector manipulati
     Implements equality comparison (\texttt{==}) for \texttt{Vec3} instances. Note that due to floating-point arithmetic, \texttt{approx\_eq} is generally preferred for meaningful comparisons.
 \end{itemize}
 
+\subsection{Bird Module}
 
+The \texttt{Bird} struct represents a particle in the simulation.
+\begin{lstlisting}[language=rust, caption={\texttt{Bird} struct}, label={lst:bird_struct}]
+#[derive(Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub struct Bird { 
+    pub position: Vec3,
+    pub velocity: Vec3,
+}
+\end{lstlisting}
+Given that the struct implements the \texttt{Copy} and \texttt{Clone} traits, it can be efficiently passed by value or duplicated, thereby avoiding ownership complexities. Spherical operations are optimized and performed through its inherent methods.
+\subsubsection{Constructors and Static Methods}
+\begin{itemize}
+    \item \textbf{\texttt{new(position: Vec3, velocity: Vec3)}}
+    
+    Creates a new bird with the specified position and velocity vectors. It is the responsibility of the caller to ensure that the position is on the sphere's surface and the velocity is tangent to the sphere at that point. \emph{Not safe to use}
 
+    \item \textbf{\texttt{from\_spherical(radius: f64, theta:f64, phi: f64, speed: f64, alpha: f64)}}
 
+    Returns a new bird instance with its position and velocity initialized based on spherical coordinates. This is the recommended way to create a bird in the simulation.
 
+    \item \textbf{\texttt{random\_angle\_noise(order\_parameter: f64) : f64}}
+    
+    This function produces normally distributed random angles used to introduce noise into bird velocity directions, simulating environmental perturbations and individual behavioral variations in flocking systems.
+\end{itemize}
+\subsubsection{Physics Methods}
+\begin{itemize}
+    \item \textbf{\texttt{distance\_from(\&self, other: \&Self, radius: f64) : f64}}
+    
+    Calculates the geodesic distance between two birds on a sphere surface.
+    \item \textbf{\texttt{parallel\_transport\_velocity(\&self, base: \&Self) : Vec3}}
+    
+    Performs parallel transport of this bird velocity to another bird position. This is essential for averaging velocities in the simulation.
 
+    \item \textbf{\texttt{add\_noise(averaged: Vec3, base: \&Self, order\_parameter: f64) : Vec3}}
+    
+    Adds angular noise to an averaged velocity vector around a reference position. This method applies random rotational noise to a velocity vector, typically used after averaging neighbor velocities in flocking algorithms. The noise is applied as a rotation around the local normal (position) vector. it uses \texttt{random\_angle\_noise} to generate the noise angle, which is sampled from a normal distribution centered at zero with a variance of \(\eta^2\).
+
+    \item \textbf{\texttt{move\_on\_sphere(\&self, dt: f64, radius: f64, speed: f64) : Self}}
+    
+    Moves this bird along the sphere surface using geodesic motion and parallel transport. This method implements complete bird movement on a sphere surface, updating both the bird position via geodesic motion and its velocity via parallel transport. The movement preserves the constraint that the bird remains on the sphere surface and maintains the velocity tangent nature to the sphere.
+\end{itemize}
 
 \section{Results}
 Hopefully someday
