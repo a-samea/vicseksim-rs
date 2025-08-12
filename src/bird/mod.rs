@@ -1,17 +1,11 @@
-//! # Bird Module - Flocking Simulation Particles
+//! # Flocking Simulation Particles
 //!
 //! This module defines the core `Bird` struct and its associated functionality for
 //! simulating flocking behavior on a spherical surface. Each `Bird` represents a
 //! single particle in the flock with position and velocity vectors in 3D Cartesian
 //! coordinates.
 //!
-//! ## Submodules
-//!
-//! - [`physics`]: Contains physics-related methods for bird movement, distance calculations,
-//!   velocity transport, and noise addition for realistic flocking behavior
-//! - [`tests`]: Unit tests ensuring correctness of bird operations and physics
-//!
-//! ## Usage Example
+//! ## Example Usage
 //!
 //! ```rust
 //! use flocking_lib::bird::Bird;
@@ -38,8 +32,17 @@ pub mod tests;
 // Physics-related methods for bird movement and flocking behavior
 pub mod physics;
 
-// Represents a single particle on the surface of the sphere.
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+/// Represents a single particle on the surface of the sphere.
+///
+/// Each `Bird` has a position vector from the sphere center and a velocity vector
+/// tangent to the sphere surface at that position. The position is defined in 3D
+/// Cartesian coordinates, and the velocity is also a 3D vector that should be
+/// tangent to the sphere surface at the bird's position.
+///
+/// # Fields
+/// - `position`: 3D Cartesian position vector from the sphere center to the bird's location.
+/// - `velocity`: 3D velocity vector that is tangent to the sphere surface at the bird's position.
+#[derive(Default, Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Bird {
     /// Position vector from sphere center to particle location
     pub position: Vec3,
@@ -110,8 +113,16 @@ impl Bird {
     /// let bird_random = Bird::from_spherical(2.0, PI/3.0, PI/4.0, 1.0, PI/6.0);
     /// ```
     pub fn from_spherical(radius: f64, theta: f64, phi: f64, speed: f64, alpha: f64) -> Self {
-        // Ensure radius is positive
-        assert!(radius > 0.0, "Radius must be positive");
+        // Validate input parameters
+        if radius.is_nan()
+            || theta.is_nan()
+            || phi.is_nan()
+            || speed.is_nan()
+            || alpha.is_nan()
+            || radius < f64::EPSILON
+        {
+            panic!("Invalid input");
+        }
 
         // Convert spherical coordinates to Cartesian position
         let x = radius * theta.sin() * phi.cos();
@@ -165,18 +176,5 @@ impl Display for Bird {
             theta.to_degrees(),
             phi.to_degrees()
         )
-    }
-}
-
-impl Default for Bird {
-    /// Creates a default bird at the origin with zero velocity.
-    /// This is useful for initializing vectors of birds without specific
-    /// initial conditions.
-    fn default() -> Self {
-        // Default bird at origin with zero velocity
-        Bird {
-            position: Vec3::zero(),
-            velocity: Vec3::zero(),
-        }
     }
 }

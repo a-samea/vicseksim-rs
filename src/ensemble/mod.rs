@@ -33,14 +33,14 @@
 //! ```rust
 //! use std::sync::mpsc;
 //! use flocking_lib::ensemble;
-//! use flocking_lib::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams};
+//! use flocking_lib::ensemble::{EntryGenerationRequest, EntryGenerationParams};
 //!
 //! let (tx, rx) = mpsc::channel();
 //!
-//! let request = EnsembleGenerationRequest {
+//! let request = EntryGenerationRequest {
 //!     id: 1,
 //!     tag: "test_ensemble".to_string(),
-//!     params: EnsembleGenerationParams {
+//!     params: EntryGenerationParams {
 //!         n_particles: 50,
 //!         radius: 1.0,
 //!         speed: 1.5,
@@ -50,7 +50,7 @@
 //!
 //! // Generate ensemble in background thread
 //! std::thread::spawn(move || {
-//!     ensemble::generate(request, tx).unwrap();
+//!     ensemble::generate_entry(request, tx).unwrap();
 //! });
 //!
 //! // Receive completed ensemble
@@ -75,29 +75,26 @@
 use crate::bird::Bird;
 use rand::prelude::*;
 use rand_distr::Uniform;
-use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 use std::sync::mpsc;
 
 /// Ensemble generation result containing the generated birds and metadata
 /// This is the unified structure used by both ensemble generation and IO persistence
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnsembleEntryResult {
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EntryResult {
     /// Unique identifier for this entry
     pub id: usize,
-    /// Tag name for the ensemble (used for file naming, batch processing)
-    pub tag: String,
+    /// Tag name for the ensemble
+    pub tag: usize,
     /// Generated birds
     pub birds: Vec<Bird>,
     /// Generation parameters for reference
-    pub params: EnsembleGenerationParams,
-    /// Timestamp when ensemble was created
-    pub created_at: u64,
+    pub params: EntryGenerationParams,
 }
 
-/// Parameters used for ensemble generation
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct EnsembleGenerationParams {
+/// Parameters used for entry generation in an ensemble
+#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EntryGenerationParams {
     pub n_particles: usize,
     pub radius: f64,
     pub speed: f64,
@@ -106,13 +103,13 @@ pub struct EnsembleGenerationParams {
 
 /// Request for ensemble generation containing all necessary parameters
 #[derive(Debug, Clone)]
-pub struct EnsembleEntryGenerationRequest {
+pub struct EntryGenerationRequest {
     /// Unique identifier for this entry
     pub id: usize,
-    /// Tag name for the ensemble (used for file naming)
-    pub tag: String,
+    /// Tag name for the ensemble
+    pub tag: usize,
     /// Generation parameters
-    pub params: EnsembleGenerationParams,
+    pub params: EntryGenerationParams,
 }
 
 /// Unit tests for the ensemble module
@@ -163,14 +160,14 @@ pub mod tests;
 ///
 /// ```rust
 /// use std::sync::mpsc;
-/// use flocking_lib::ensemble::{self, EnsembleGenerationRequest, EnsembleGenerationParams};
+/// use flocking_lib::ensemble::{self, EntryGenerationRequest, EntryGenerationParams};
 ///
 /// let (tx, rx) = mpsc::channel();
 ///
-/// let request = EnsembleGenerationRequest {
+/// let request = EntryGenerationRequest {
 ///     id: 0,
 ///     tag: "sparse".to_string(),
-///     params: EnsembleGenerationParams {
+///     params: EntryGenerationParams {
 ///         n_particles: 100,
 ///         radius: 1.0,
 ///         speed: 1.5,
@@ -178,13 +175,13 @@ pub mod tests;
 ///     },
 /// };
 ///
-/// ensemble::generate(request, tx).unwrap();
+/// ensemble::generate_entry(request, tx).unwrap();
 /// let result = rx.recv().unwrap();
 /// println!("Generated ensemble '{}' with {} birds", result.tag, result.birds.len());
 /// ```
 pub fn generate_entry(
-    request: EnsembleEntryGenerationRequest,
-    tx: mpsc::Sender<EnsembleEntryResult>,
+    request: EntryGenerationRequest,
+    tx: mpsc::Sender<EntryResult>,
 ) -> Result<(), String> {
     let mut rng = rand::rng();
     let mut birds = Vec::with_capacity(request.params.n_particles);
@@ -220,7 +217,7 @@ pub fn generate_entry(
     }
 
     // Create the ensemble result with metadata (timestamps will be added by IO module)
-    let result = EnsembleEntryResult {
+    let result = EntryResult {
         id: request.id,
         tag: request.tag,
         birds,
@@ -233,7 +230,6 @@ pub fn generate_entry(
 
     Ok(())
 }
-
 
 /// Generates multiple ensemble entries in parallel with intelligent thread management
 ///
@@ -271,9 +267,9 @@ pub fn generate_entry(
 /// # Examples
 ///
 /// ```rust
-/// use flocking_lib::ensemble::{self, EnsembleGenerationParams};
+/// use flocking_lib::ensemble::{self, EntryGenerationParams};
 ///
-/// let params = EnsembleGenerationParams {
+/// let params = EntryGenerationParams {
 ///     n_particles: 100,
 ///     radius: 1.0,
 ///     speed: 1.5,
@@ -285,28 +281,35 @@ pub fn generate_entry(
 /// ```
 pub fn generate(
     tag: String,
-    number_of_entries: usize, 
-    parallel_threads: usize, 
-    params: EnsembleGenerationParams
+    number_of_entries: usize,
+    parallel_threads: usize,
+    params: EntryGenerationParams,
 ) -> Result<(), String> {
     use std::time::Instant;
-    
+
     println!("--- Parallel Ensemble Generation ---");
-    println!("Generating {} ensemble entries with tag '{}'", number_of_entries, tag);
-    
+    println!(
+        "Generating {} ensemble entries with tag '{}'",
+        number_of_entries, tag
+    );
+
     // Intelligently determine the optimal number of threads
     let available_parallelism = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(4); // Fallback to 4 if detection fails
-    
+
     let effective_threads = std::cmp::min(parallel_threads, available_parallelism);
     let effective_threads = std::cmp::min(effective_threads, number_of_entries); // Don't use more threads than entries
-    
-    println!("Using {} threads (requested: {}, available: {}, entries: {})", 
-             effective_threads, parallel_threads, available_parallelism, number_of_entries);
-    
-    println!("Configuration: n_particles={}, radius={}, speed={}, min_distance={}", 
-             params.n_particles, params.radius, params.speed, params.min_distance);
+
+    println!(
+        "Using {} threads (requested: {}, available: {}, entries: {})",
+        effective_threads, parallel_threads, available_parallelism, number_of_entries
+    );
+
+    println!(
+        "Configuration: n_particles={}, radius={}, speed={}, min_distance={}",
+        params.n_particles, params.radius, params.speed, params.min_distance
+    );
 
     // Ensure data directories exist
     crate::io::ensure_data_directories()
@@ -338,13 +341,16 @@ pub fn generate(
         let thread_params = params;
 
         let handle = std::thread::spawn(move || {
-            println!("Thread {} starting: generating entries {} to {}", 
-                     thread_id, start_entry, end_entry - 1);
+            println!(
+                "Thread {} starting: generating entries {} to {}",
+                thread_id,
+                start_entry,
+                end_entry - 1
+            );
 
             for entry_id in start_entry..end_entry {
-
                 // Create the ensemble generation request
-                let request = EnsembleEntryGenerationRequest {
+                let request = EntryGenerationRequest {
                     id: entry_id,
                     tag: thread_tag.clone(),
                     params: thread_params,
@@ -353,14 +359,20 @@ pub fn generate(
                 // Generate the ensemble entry
                 match generate_entry(request, tx.clone()) {
                     Ok(()) => {
-                        println!("Thread {}: Generated ensemble entry {} ({})", 
-                                 thread_id, entry_id, thread_tag);
+                        println!(
+                            "Thread {}: Generated ensemble entry {} ({})",
+                            thread_id, entry_id, thread_tag
+                        );
                     }
                     Err(e) => {
-                        eprintln!("Thread {}: Failed to generate entry {}: {}", 
-                                  thread_id, entry_id, e);
-                        return Err(format!("Thread {}: Generation failed for entry {}: {}", 
-                                           thread_id, entry_id, e));
+                        eprintln!(
+                            "Thread {}: Failed to generate entry {}: {}",
+                            thread_id, entry_id, e
+                        );
+                        return Err(format!(
+                            "Thread {}: Generation failed for entry {}: {}",
+                            thread_id, entry_id, e
+                        ));
                     }
                 }
             }
@@ -384,8 +396,10 @@ pub fn generate(
         }
 
         completed_count += 1;
-        println!("Submitted ensemble {} for saving ({}/{} completed)", 
-                 ensemble_result.tag, completed_count, number_of_entries);
+        println!(
+            "Submitted ensemble {} for saving ({}/{} completed)",
+            ensemble_result.tag, completed_count, number_of_entries
+        );
     }
 
     // Drop I/O sender to signal completion
@@ -421,15 +435,22 @@ pub fn generate(
 
     let duration = start_time.elapsed();
     println!("\n--- Generation Complete ---");
-    println!("Successfully generated {} ensemble entries", completed_count);
+    println!(
+        "Successfully generated {} ensemble entries",
+        completed_count
+    );
     println!("Total time: {:.2} seconds", duration.as_secs_f64());
-    println!("Average time per entry: {:.3} seconds", 
-             duration.as_secs_f64() / number_of_entries as f64);
+    println!(
+        "Average time per entry: {:.3} seconds",
+        duration.as_secs_f64() / number_of_entries as f64
+    );
     println!("Ensemble entries saved to: ./data/ensemble/");
 
     if completed_count != number_of_entries {
-        return Err(format!("Generated {} entries but expected {}", 
-                           completed_count, number_of_entries));
+        return Err(format!(
+            "Generated {} entries but expected {}",
+            completed_count, number_of_entries
+        ));
     }
 
     Ok(())

@@ -1,17 +1,19 @@
-use flocking_lib::ensemble::{generate_entry, EnsembleEntryGenerationRequest, EnsembleGenerationParams};
-use flocking_lib::io::ensemble::{start_receiver_thread, list_ensemble_tags_and_ids, load_ensemble};
-use flocking_lib::io::simulation::{FrameCollector, list_simulation_tags_and_ids, load_simulation};
-use flocking_lib::simulation::{SimulationSnapshot, SimulationParams};
 use flocking_lib::bird::Bird;
-use flocking_lib::vector::Vec3;
+use flocking_lib::ensemble::{generate_entry, EntryGenerationParams, EntryGenerationRequest};
+use flocking_lib::io::ensemble::{
+    list_ensemble_tags_and_ids, load_ensemble, start_receiver_thread,
+};
+use flocking_lib::io::simulation::{list_simulation_tags_and_ids, load_simulation, FrameCollector};
 use flocking_lib::io::{self, get_data_path};
+use flocking_lib::simulation::{SimulationParams, SimulationSnapshot};
+use flocking_lib::vector::Vec3;
+use std::fs;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
-use std::fs;
 
 /// Integration test for ensemble generation and IO persistence
-/// 
+///
 /// This test verifies the complete workflow:
 /// 1. Generate 3 concurrent ensembles with different IDs
 /// 2. Save them concurrently using the IO system
@@ -27,9 +29,9 @@ fn ensemble_generation_and_io_integration() {
 
     // Define test parameters for 3 different ensembles
     let test_cases = vec![
-        (0, 30, 1.0, 1.5, 0.15),  // Small ensemble
-        (1, 50, 1.2, 2.0, 0.12),  // Medium ensemble  
-        (2, 25, 0.8, 1.8, 0.18),  // Dense ensemble
+        (0, 30, 1.0, 1.5, 0.15), // Small ensemble
+        (1, 50, 1.2, 2.0, 0.12), // Medium ensemble
+        (2, 25, 0.8, 1.8, 0.18), // Dense ensemble
     ];
 
     // Set up channels for ensemble generation and IO
@@ -41,7 +43,7 @@ fn ensemble_generation_and_io_integration() {
 
     // Create and start ensemble generation threads
     let mut generation_handles = Vec::new();
-    
+
     for (id, n_particles, radius, speed, min_distance) in test_cases.iter() {
         let gen_tx = generation_tx.clone();
         let id = *id;
@@ -51,10 +53,10 @@ fn ensemble_generation_and_io_integration() {
         let min_distance = *min_distance;
 
         let handle = thread::spawn(move || {
-            let request = EnsembleEntryGenerationRequest {
+            let request = EntryGenerationRequest {
                 id,
                 tag: "test".to_string(),
-                params: EnsembleGenerationParams {
+                params: EntryGenerationParams {
                     n_particles,
                     radius,
                     speed,
@@ -73,13 +75,17 @@ fn ensemble_generation_and_io_integration() {
 
     // Wait for all generation threads to complete
     for handle in generation_handles {
-        handle.join().expect("Generation thread should complete successfully");
+        handle
+            .join()
+            .expect("Generation thread should complete successfully");
     }
 
     // Collect generated ensembles and forward them to IO
     let mut generated_ensembles = Vec::new();
     while let Ok(ensemble) = generation_rx.recv_timeout(Duration::from_millis(100)) {
-        io_tx.send(ensemble.clone()).expect("Should be able to send to IO");
+        io_tx
+            .send(ensemble.clone())
+            .expect("Should be able to send to IO");
         generated_ensembles.push(ensemble);
     }
 
@@ -87,10 +93,17 @@ fn ensemble_generation_and_io_integration() {
     drop(io_tx);
 
     // Wait for IO thread to complete saving
-    io_handle.join().expect("IO thread should complete").expect("IO operations should succeed");
+    io_handle
+        .join()
+        .expect("IO thread should complete")
+        .expect("IO operations should succeed");
 
     // Verify we generated exactly 3 ensembles
-    assert_eq!(generated_ensembles.len(), 3, "Should have generated exactly 3 ensembles");
+    assert_eq!(
+        generated_ensembles.len(),
+        3,
+        "Should have generated exactly 3 ensembles"
+    );
 
     // Sort by ID for consistent verification
     generated_ensembles.sort_by_key(|e| e.id);
@@ -99,8 +112,12 @@ fn ensemble_generation_and_io_integration() {
     for (i, ensemble) in generated_ensembles.iter().enumerate() {
         assert_eq!(ensemble.id, i, "Ensemble ID should match expected");
         assert_eq!(ensemble.tag, "test", "Ensemble tag should be 'test'");
-        assert_eq!(ensemble.birds.len(), test_cases[i].1, "Bird count should match parameters");
-        
+        assert_eq!(
+            ensemble.birds.len(),
+            test_cases[i].1,
+            "Bird count should match parameters"
+        );
+
         // Verify ensemble parameters
         assert_eq!(ensemble.params.n_particles, test_cases[i].1);
         assert!((ensemble.params.radius - test_cases[i].2).abs() < 1e-10);
@@ -109,33 +126,46 @@ fn ensemble_generation_and_io_integration() {
     }
 
     // Test listing functionality - verify files were saved
-    let listed_ensembles = list_ensemble_tags_and_ids()
-        .expect("Should be able to list ensemble files");
+    let listed_ensembles =
+        list_ensemble_tags_and_ids().expect("Should be able to list ensemble files");
 
     // Filter for our test ensembles
-    let test_ensembles: Vec<_> = listed_ensembles.into_iter()
+    let test_ensembles: Vec<_> = listed_ensembles
+        .into_iter()
         .filter(|(tag, _)| tag == "test")
         .collect();
 
-    assert_eq!(test_ensembles.len(), 3, "Should find exactly 3 test ensemble files");
+    assert_eq!(
+        test_ensembles.len(),
+        3,
+        "Should find exactly 3 test ensemble files"
+    );
 
     // Verify all expected IDs are present
     let mut found_ids: Vec<_> = test_ensembles.iter().map(|(_, id)| *id).collect();
     found_ids.sort();
-    assert_eq!(found_ids, vec![0, 1, 2], "Should find ensembles with IDs 0, 1, 2");
+    assert_eq!(
+        found_ids,
+        vec![0, 1, 2],
+        "Should find ensembles with IDs 0, 1, 2"
+    );
 
     // Test loading functionality - load each ensemble and verify
-    for (original_ensemble, (id, n_particles, radius, speed, min_distance)) in 
-        generated_ensembles.iter().zip(test_cases.iter()) {
-        
+    for (original_ensemble, (id, n_particles, radius, speed, min_distance)) in
+        generated_ensembles.iter().zip(test_cases.iter())
+    {
         let loaded_ensemble = load_ensemble("test", id)
             .expect(&format!("Should be able to load ensemble with ID {}", id));
 
         // Verify loaded ensemble matches original
         assert_eq!(loaded_ensemble.id, *id, "Loaded ID should match");
         assert_eq!(loaded_ensemble.tag, "test", "Loaded tag should match");
-        assert_eq!(loaded_ensemble.birds.len(), *n_particles, "Loaded bird count should match");
-        
+        assert_eq!(
+            loaded_ensemble.birds.len(),
+            *n_particles,
+            "Loaded bird count should match"
+        );
+
         // Verify parameters match
         assert_eq!(loaded_ensemble.params.n_particles, *n_particles);
         assert!((loaded_ensemble.params.radius - radius).abs() < 1e-10);
@@ -144,12 +174,16 @@ fn ensemble_generation_and_io_integration() {
 
         // Verify birds are identical (positions and velocities)
         assert_eq!(loaded_ensemble.birds.len(), original_ensemble.birds.len());
-        for (loaded_bird, original_bird) in loaded_ensemble.birds.iter().zip(original_ensemble.birds.iter()) {
+        for (loaded_bird, original_bird) in loaded_ensemble
+            .birds
+            .iter()
+            .zip(original_ensemble.birds.iter())
+        {
             // Compare positions with small tolerance for floating point precision
             assert!((loaded_bird.position.x - original_bird.position.x).abs() < 1e-10);
             assert!((loaded_bird.position.y - original_bird.position.y).abs() < 1e-10);
             assert!((loaded_bird.position.z - original_bird.position.z).abs() < 1e-10);
-            
+
             // Compare velocities
             assert!((loaded_bird.velocity.x - original_bird.velocity.x).abs() < 1e-10);
             assert!((loaded_bird.velocity.y - original_bird.velocity.y).abs() < 1e-10);
@@ -157,17 +191,22 @@ fn ensemble_generation_and_io_integration() {
         }
 
         // Verify timestamp was added (should be non-zero)
-        assert!(loaded_ensemble.created_at > 0, "Timestamp should be set by IO module");
+        assert!(
+            loaded_ensemble.created_at > 0,
+            "Timestamp should be set by IO module"
+        );
     }
 
-    println!("✓ Integration test passed: Generated, saved, listed, and loaded 3 ensembles successfully");
+    println!(
+        "✓ Integration test passed: Generated, saved, listed, and loaded 3 ensembles successfully"
+    );
 
     // Clean up test files
     cleanup_test_files();
 }
 
 /// Integration test for simulation IO functionality
-/// 
+///
 /// This test verifies the simulation frame collection and persistence workflow:
 /// 1. Create mock simulation snapshots
 /// 2. Use FrameCollector to accumulate frames
@@ -177,7 +216,7 @@ fn ensemble_generation_and_io_integration() {
 fn simulation_io_integration() {
     // Ensure data directories exist
     io::ensure_data_directories().expect("Should be able to create data directories");
-    
+
     // Clean up any existing simulation test files
     cleanup_simulation_test_files();
 
@@ -206,9 +245,9 @@ fn simulation_io_integration() {
 
     // Create frame collector
     let mut collector = FrameCollector::new(
-        42,                          // id
+        42,                            // id
         "test_simulation".to_string(), // tag
-        1,                           // ensemble_id
+        1,                             // ensemble_id
         params,
     );
 
@@ -234,45 +273,68 @@ fn simulation_io_integration() {
     assert_eq!(simulation_result.final_state.len(), 2);
 
     // Save the simulation result
-    flocking_lib::io::save_data(&simulation_result, &get_data_path(io::DataType::Simulation, &simulation_result.tag, &simulation_result.id))
-        .expect("Should be able to save simulation");
+    flocking_lib::io::save_data(
+        &simulation_result,
+        &get_data_path(
+            io::DataType::Simulation,
+            &simulation_result.tag,
+            &simulation_result.id,
+        ),
+    )
+    .expect("Should be able to save simulation");
 
     // List simulation files
-    let simulation_list = list_simulation_tags_and_ids()
-        .expect("Should be able to list simulations");
-    
-    assert!(simulation_list.len() >= 1, "Should have at least one simulation saved");
-    
-    let found_our_simulation = simulation_list.iter()
+    let simulation_list =
+        list_simulation_tags_and_ids().expect("Should be able to list simulations");
+
+    assert!(
+        simulation_list.len() >= 1,
+        "Should have at least one simulation saved"
+    );
+
+    let found_our_simulation = simulation_list
+        .iter()
         .any(|(tag, id)| tag == "test_simulation" && *id == 42);
-    assert!(found_our_simulation, "Should find our test simulation in the list");
+    assert!(
+        found_our_simulation,
+        "Should find our test simulation in the list"
+    );
 
     // Load the simulation back
-    let loaded_simulation = load_simulation("test_simulation", &42)
-        .expect("Should be able to load the simulation");
+    let loaded_simulation =
+        load_simulation("test_simulation", &42).expect("Should be able to load the simulation");
 
     // Verify loaded simulation matches original
     assert_eq!(loaded_simulation.id, simulation_result.id);
     assert_eq!(loaded_simulation.tag, simulation_result.tag);
     assert_eq!(loaded_simulation.ensemble_id, simulation_result.ensemble_id);
-    assert_eq!(loaded_simulation.snapshots.len(), simulation_result.snapshots.len());
+    assert_eq!(
+        loaded_simulation.snapshots.len(),
+        simulation_result.snapshots.len()
+    );
     assert_eq!(loaded_simulation.total_steps, simulation_result.total_steps);
     assert!(loaded_simulation.created_at > 0, "Timestamp should be set");
 
     // Verify snapshots data integrity
-    for (loaded_snapshot, original_snapshot) in loaded_simulation.snapshots.iter()
-        .zip(simulation_result.snapshots.iter()) {
+    for (loaded_snapshot, original_snapshot) in loaded_simulation
+        .snapshots
+        .iter()
+        .zip(simulation_result.snapshots.iter())
+    {
         assert_eq!(loaded_snapshot.step, original_snapshot.step);
         assert!((loaded_snapshot.timestamp - original_snapshot.timestamp).abs() < 1e-10);
         assert_eq!(loaded_snapshot.birds.len(), original_snapshot.birds.len());
-        
-        for (loaded_bird, original_bird) in loaded_snapshot.birds.iter()
-            .zip(original_snapshot.birds.iter()) {
+
+        for (loaded_bird, original_bird) in loaded_snapshot
+            .birds
+            .iter()
+            .zip(original_snapshot.birds.iter())
+        {
             // Compare positions with small tolerance
             assert!((loaded_bird.position.x - original_bird.position.x).abs() < 1e-10);
             assert!((loaded_bird.position.y - original_bird.position.y).abs() < 1e-10);
             assert!((loaded_bird.position.z - original_bird.position.z).abs() < 1e-10);
-            
+
             // Compare velocities
             assert!((loaded_bird.velocity.x - original_bird.velocity.x).abs() < 1e-10);
             assert!((loaded_bird.velocity.y - original_bird.velocity.y).abs() < 1e-10);
@@ -280,7 +342,9 @@ fn simulation_io_integration() {
         }
     }
 
-    println!("✓ Simulation IO integration test passed: Created, saved, listed, and loaded simulation successfully");
+    println!(
+        "✓ Simulation IO integration test passed: Created, saved, listed, and loaded simulation successfully"
+    );
 
     // Clean up test files
     cleanup_simulation_test_files();
@@ -290,7 +354,7 @@ fn simulation_io_integration() {
 fn cleanup_test_files() {
     let test_files = [
         "./data/ensemble/test-0.bin",
-        "./data/ensemble/test-1.bin", 
+        "./data/ensemble/test-1.bin",
         "./data/ensemble/test-2.bin",
     ];
 
@@ -303,9 +367,7 @@ fn cleanup_test_files() {
 
 /// Helper function to clean up simulation test files
 fn cleanup_simulation_test_files() {
-    let test_files = [
-        "./data/simulation/test_simulation-42.bin",
-    ];
+    let test_files = ["./data/simulation/test_simulation-42.bin"];
 
     for file_path in &test_files {
         if let Err(_) = fs::remove_file(file_path) {

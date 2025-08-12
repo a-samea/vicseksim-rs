@@ -77,14 +77,14 @@
 //! in parallel contexts via `rayon`. The simulation engine handles thread safety
 //! internally for parallel bird updates.
 
-// Complete
+// Complete full
 pub mod bird;
 // Complete
 pub mod ensemble;
 pub mod io;
 // Complete
 pub mod simulation;
-// Complete
+// Complete full
 pub mod vector;
 
 pub mod analysis;

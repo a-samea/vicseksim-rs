@@ -1,3 +1,5 @@
+//! # Unit tests for the Bird module
+
 #[cfg(test)]
 mod units {
     use crate::bird::Bird;

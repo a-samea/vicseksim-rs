@@ -126,16 +126,15 @@ impl Bird {
     /// This implements the stochastic component of the Vicsek model and similar
     /// flocking algorithms where noise strength controls the order-disorder transition.
     ///
-    #[inline]
     fn random_angle_noise(order_parameter: f64) -> f64 {
         use rand::prelude::*;
         use rand_distr::Normal;
-        if order_parameter < f64::EPSILON {
-            unreachable!("Order parameter must be greater than zero for random angle generation.");
+        if order_parameter < f64::EPSILON || order_parameter.is_nan() {
+            panic!("Order parameter must be greater than zero for random angle generation.");
         }
 
         let mut rng = rand::rng();
-        let normal = Normal::new(0.0, order_parameter).unwrap();
+        let normal = Normal::new(0.0, order_parameter).expect("Order parameter must be finite");
         normal.sample(&mut rng)
     }
 
@@ -196,32 +195,6 @@ impl Bird {
     /// New `Bird` with updated position and velocity after moving along the sphere surface
     /// for time `dt`.
     ///
-    /// # Mathematical Background
-    ///
-    /// **Position Update (Geodesic Motion):**
-    /// The position is updated using Rodrigues' rotation formula:
-    /// - Angular displacement: α = (speed × dt) / radius
-    /// - **r'** = **r** × cos(α) + (radius × sin(α)) × **v̂**
-    ///
-    /// **Velocity Update (Parallel Transport):**
-    /// The velocity vector is transported from the old position to the new position
-    /// to maintain its tangential nature, using the parallel transport operation.
-    ///
-    /// # Validation
-    ///
-    /// The method validates that the provided `speed` parameter matches the actual
-    /// velocity magnitude within numerical tolerance (1e-10).
-    ///
-    /// # Sphere Constraint
-    ///
-    /// The resulting position automatically maintains |**r'**| = radius, and the
-    /// transported velocity remains tangent to the sphere surface.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the provided `speed` parameter doesn't match the bird's velocity magnitude
-    /// within numerical tolerance.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -230,7 +203,7 @@ impl Bird {
     /// let bird = Bird{position:Vec3::new(1.0, 0.0, 0.0), velocity:Vec3::new(0.0, 2.0, 0.0)};
     /// let new_bird = bird.move_on_sphere(0.1, 1.0, 2.0);
     /// ```
-    pub fn move_on_sphere(&self, dt: f64, radius: f64, speed: f64) -> Bird {
+    pub fn move_on_sphere(&self, dt: f64, radius: f64, speed: f64) -> Self {
         // Validate that the speed parameter matches the actual velocity magnitude
         let actual_speed = self.velocity.norm();
         let actual_radius = self.position.norm();
@@ -254,12 +227,12 @@ impl Bird {
         // Calculate new position using geodesic motion
         let angle = speed * dt / radius;
 
-        let new_position =
+        let position =
             self.position * angle.cos() + (radius * angle.sin()) * self.velocity.normalize();
 
-        let new_velocity =
+        let velocity =
             self.velocity * angle.cos() - (speed * angle.sin()) * self.position.normalize();
 
-        Bird::new(new_position, new_velocity)
+        Bird { position, velocity }
     }
 }

@@ -56,7 +56,7 @@ pub mod tests;
 /// let up = Vec3::y_hat();
 /// let forward = Vec3::z_hat();
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vec3 {
     /// X-component of the vector
     pub x: f64,

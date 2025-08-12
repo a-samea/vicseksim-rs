@@ -1,7 +1,7 @@
 use clap::Parser;
 use flocking_lib::cli::{Cli, Commands};
+use flocking_lib::ensemble::{EntryGenerationParams, EntryGenerationRequest};
 use flocking_lib::{ensemble, io};
-use flocking_lib::ensemble::{EnsembleEntryGenerationRequest, EnsembleGenerationParams};
 use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
@@ -71,10 +71,10 @@ fn main() -> Result<(), String> {
                         let ensemble_tag = format!("{}_{:04}", base_tag, ensemble_id);
 
                         // Create the ensemble generation request
-                        let request = EnsembleEntryGenerationRequest {
+                        let request = EntryGenerationRequest {
                             id: ensemble_id,
                             tag: ensemble_tag.clone(),
-                            params: EnsembleGenerationParams {
+                            params: EntryGenerationParams {
                                 n_particles: birds_per_ensemble,
                                 radius,
                                 speed,
