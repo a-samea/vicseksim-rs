@@ -7,17 +7,14 @@ pub mod logic;
 pub mod tests;
 
 use crate::bird::Bird;
-use serde::{Deserialize, Serialize};
-use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
-use std::sync::Arc;
 
 /// Comprehensive configuration parameters for flocking simulation physics and behavior.
 ///
 /// This structure encapsulates all the essential parameters that control the simulation
 /// dynamics, from basic system size to complex interaction behaviors. These parameters
 /// directly influence the emergent flocking patterns and computational performance.
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimulationParams {
     /// Total number of birds in the simulation system.
     pub num_birds: usize,
@@ -60,7 +57,7 @@ pub struct SimulationRequest {
 /// a foundation for trajectory analysis, pattern recognition, and visualization
 /// of flocking dynamics. Snapshots are generated at configurable intervals to
 /// balance data richness with storage efficiency.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimulationSnapshot {
     /// Simulation step number when this snapshot was captured.
     pub step: usize,
@@ -76,7 +73,7 @@ pub struct SimulationSnapshot {
 /// analysis, including trajectory data, configuration parameters, execution metadata,
 /// and performance statistics. It serves as the primary output format for simulation
 /// studies and enables reproducible research workflows.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimulationResult {
     /// Unique identifier matching the original simulation request.
     pub id: usize,
@@ -88,46 +85,14 @@ pub struct SimulationResult {
     pub params: SimulationParams,
     /// Time-ordered sequence of simulation state snapshots.
     pub snapshots: Vec<SimulationSnapshot>,
-    /// Final configuration of all birds at simulation termination.
-    pub final_state: Vec<Bird>,
-    /// Unix timestamp indicating when this simulation was executed.
-    pub created_at: usize,
     /// Total number of simulation steps completed.
     pub total_steps: usize,
 }
 
 /// High-performance flocking simulation engine with parallel processing and memory optimization.
 ///
-/// The `Simulation` struct implements a sophisticated computational framework for studying
-/// collective flocking behavior on spherical surfaces. It combines several advanced techniques
-/// to achieve optimal performance while maintaining scientific accuracy:
-///
-/// ## Performance Optimizations
-///
-/// - **Double Buffering**: Eliminates dynamic memory allocation during simulation steps
-/// - **Parallel Processing**: Leverages rayon for CPU-efficient force calculations
-/// - **Memory Locality**: Optimized data layout for cache-friendly access patterns
-/// - **Asynchronous I/O**: Non-blocking frame transmission prevents simulation stalls
-///
-/// ## Concurrency Architecture
-///
-/// The simulation uses a carefully designed concurrency model:
-/// - **Read-Only Access**: All threads read current state immutably (thread-safe)
-/// - **Exclusive Writes**: Each thread writes to distinct memory locations (no contention)
-/// - **Atomic Control**: Stop conditions use atomic operations for immediate response
-/// - **Buffer Swapping**: Cheap pointer swaps enable seamless state transitions
-///
-/// ## Memory Management
-///
-/// Double buffering strategy eliminates allocation overhead:
-/// ```text
-/// Step N:   Read from A → Compute → Write to B → Swap(A,B)
-/// Step N+1: Read from B → Compute → Write to A → Swap(A,B)
-/// ```
-///
-/// This approach ensures consistent memory usage regardless of simulation length and
-/// eliminates garbage collection pauses that could disrupt real-time performance.
-pub struct Simulation {
+
+pub struct Engine {
     /// Primary particle state buffer containing current simulation state.
     particles_a: Vec<Bird>,
     /// Secondary particle state buffer for writing computed updates.
@@ -142,21 +107,4 @@ pub struct Simulation {
     frame_sender: mpsc::Sender<SimulationSnapshot>,
     /// Interval controlling snapshot capture frequency.
     frame_interval: usize,
-    /// Thread-safe flag enabling graceful simulation termination.
-    should_stop: Arc<AtomicBool>,
-}
-
-impl Drop for Simulation {
-    /// Ensures graceful shutdown when the simulation instance is destroyed.
-    ///
-    /// This destructor automatically sets the stop flag when the simulation
-    /// goes out of scope, providing a fail-safe mechanism to prevent runaway
-    /// threads or resource leaks in case of unexpected termination scenarios.
-    ///
-    /// The implementation ensures that any external threads monitoring the
-    /// stop flag will be notified of the simulation's termination, enabling
-    /// coordinated cleanup of associated resources.
-    fn drop(&mut self) {
-        self.stop();
-    }
 }
