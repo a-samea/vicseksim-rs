@@ -1,80 +1,7 @@
-//! # Ensemble Generation Module
-//!
-//! This module provides functionality for generating ensembles of birds (particles) for flocking
-//! simulations. An ensemble represents a collection of birds positioned on a spherical surface
-//! with specified constraints and initial conditions.
-//!
-//! ## Overview
-//!
-//! The ensemble module is responsible for:
-//! - Generating collections of birds with uniform spatial distribution on spherical surfaces
-//! - Enforcing minimum distance constraints between particles to prevent overlapping
-//! - Providing structured data types for ensemble metadata and generation parameters
-//! - Supporting concurrent ensemble generation through MPSC channels
-//! - Integrating with the IO system for persistence and batch processing
-//!
-//! ## Key Concepts
-//!
-//! ### Spherical Distribution
-//! Birds are distributed uniformly on the surface of a sphere using proper spherical coordinate
-//! sampling. This ensures no clustering around poles and maintains rotational symmetry.
-//!
-//! ### Rejection Sampling
-//! To maintain minimum distance constraints, the module uses rejection sampling - candidate
-//! birds that are too close to existing birds are discarded and new positions are generated.
-//!
-//! ### Ensemble Metadata
-//! Each ensemble includes comprehensive metadata including unique identifiers, generation
-//! parameters, timestamps, and tags for organization and batch processing.
-//!
-//! ## Usage Patterns
-//!
-//! ### Single Ensemble Generation
-//! ```rust
-//! use std::sync::mpsc;
-//! use flocking_lib::ensemble;
-//! use flocking_lib::ensemble::{EntryGenerationRequest, EntryGenerationParams};
-//!
-//! let (tx, rx) = mpsc::channel();
-//!
-//! let request = EntryGenerationRequest {
-//!     id: 1,
-//!     tag: "test_ensemble".to_string(),
-//!     params: EntryGenerationParams {
-//!         n_particles: 50,
-//!         radius: 1.0,
-//!         speed: 1.5,
-//!         min_distance: 0.1,
-//!     },
-//! };
-//!
-//! // Generate ensemble in background thread
-//! std::thread::spawn(move || {
-//!     ensemble::generate_entry(request, tx).unwrap();
-//! });
-//!
-//! // Receive completed ensemble
-//! let result = rx.recv().unwrap();
-//! println!("Generated {} birds", result.birds.len());
-//! ```
-//!
-//! ## Performance Considerations
-//!
-//! - **Time Complexity**: O(n²) worst case due to distance checking during rejection sampling
-//! - **Memory Usage**: Pre-allocated vectors minimize memory fragmentation
-//! - **Parallelization**: Thread-safe design allows multiple ensembles to be generated concurrently
-//! - **Distance Constraints**: Tighter `min_distance` values increase generation time exponentially
-//!
-//! ## Integration Points
-//!
-//! - **Bird Module**: Uses `Bird::from_spherical()` and `Bird::distance_from()` methods
-//! - **IO Module**: Provides `EnsembleResult` for persistence and loading
-//! - **Simulation Module**: Generated ensembles serve as initial conditions for simulations
-//! - **Analysis Module**: Ensemble metadata enables batch analysis and comparison
+//! Ensemble generation module
 
 use crate::bird::Bird;
-use rand::prelude::*;
-use rand_distr::Uniform;
+use rayon::prelude::*;
 use std::f64::consts::PI;
 use std::sync::mpsc;
 
@@ -102,7 +29,7 @@ pub struct EntryGenerationParams {
 }
 
 /// Request for ensemble generation containing all necessary parameters
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct EntryGenerationRequest {
     /// Unique identifier for this entry
     pub id: usize,
@@ -114,6 +41,22 @@ pub struct EntryGenerationRequest {
 
 /// Unit tests for the ensemble module
 pub mod tests;
+
+/// Generates a random bird
+fn random_bird() -> (f64, f64, f64) {
+    use rand::prelude::*;
+    use rand_distr::Uniform;
+
+    let mut rng = rand::rng();
+    let angle_distribution = Uniform::new(0.0, 2.0 * PI).unwrap();
+    let cos_distribution = Uniform::new(-1.0, 1.0).unwrap();
+    // Generate uniform random spherical coordinates
+    let phi = angle_distribution.sample(&mut rng); // azimuthal angle [0, 2π]
+    let alpha = angle_distribution.sample(&mut rng); // velocity direction [0, 2π]
+    let cos_theta: f64 = cos_distribution.sample(&mut rng); // uniform cos(θ) [-1, 1]
+    let theta = cos_theta.acos(); // polar angle [0, π]
+    (theta, phi, alpha)
+}
 
 /// Generates an ensemble entry of N birds uniformly distributed on a spherical surface.
 ///
@@ -179,21 +122,14 @@ pub mod tests;
 /// let result = rx.recv().unwrap();
 /// println!("Generated ensemble '{}' with {} birds", result.tag, result.birds.len());
 /// ```
-pub fn generate_entry(
+fn generate_entry(
     request: EntryGenerationRequest,
     tx: mpsc::Sender<EntryResult>,
 ) -> Result<(), String> {
-    let mut rng = rand::rng();
     let mut birds = Vec::with_capacity(request.params.n_particles);
 
     while birds.len() < request.params.n_particles {
-        let angle_distribution = Uniform::new(0.0, 2.0 * PI).unwrap();
-        let cos_distribution = Uniform::new(-1.0, 1.0).unwrap();
-        // Generate uniform random spherical coordinates
-        let phi = angle_distribution.sample(&mut rng); // azimuthal angle [0, 2π]
-        let alpha = angle_distribution.sample(&mut rng); // velocity direction [0, 2π]
-        let cos_theta: f64 = cos_distribution.sample(&mut rng); // uniform cos(θ) [-1, 1]
-        let theta = cos_theta.acos(); // polar angle [0, π]
+        let (theta, phi, alpha) = random_bird();
 
         // Create new bird from spherical coordinates
         let candidate_bird = Bird::from_spherical(
@@ -216,13 +152,12 @@ pub fn generate_entry(
         }
     }
 
-    // Create the ensemble result with metadata (timestamps will be added by IO module)
+    // Create the ensemble result with metadata
     let result = EntryResult {
         id: request.id,
         tag: request.tag,
         birds,
         params: request.params,
-        created_at: 0, // Will be set by IO module
     };
 
     // Send the complete ensemble result via MPSC to IO
@@ -280,145 +215,71 @@ pub fn generate_entry(
 /// ensemble::generate("experiment".to_string(), 50, 8, params)?;
 /// ```
 pub fn generate(
-    tag: String,
+    tag: usize,
     number_of_entries: usize,
-    parallel_threads: usize,
     params: EntryGenerationParams,
 ) -> Result<(), String> {
-    use std::time::Instant;
-
     println!("--- Parallel Ensemble Generation ---");
     println!(
         "Generating {} ensemble entries with tag '{}'",
         number_of_entries, tag
-    );
-
-    // Intelligently determine the optimal number of threads
-    let available_parallelism = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4); // Fallback to 4 if detection fails
-
-    let effective_threads = std::cmp::min(parallel_threads, available_parallelism);
-    let effective_threads = std::cmp::min(effective_threads, number_of_entries); // Don't use more threads than entries
-
-    println!(
-        "Using {} threads (requested: {}, available: {}, entries: {})",
-        effective_threads, parallel_threads, available_parallelism, number_of_entries
-    );
 
     println!(
         "Configuration: n_particles={}, radius={}, speed={}, min_distance={}",
         params.n_particles, params.radius, params.speed, params.min_distance
     );
+    );
+    // rayon
+
+    // initialization of channels
+    let (entry_tx, entry_rx) = mpsc::channel();
+    let (io_tx, io_rx) = mpsc::channel();
+
+    // create work items
+    let requests = (0..number_of_entries)
+        .map(|id| EntryGenerationRequest { id, tag, params })
+        .collect::<Vec<EntryGenerationRequest>>();
+
+    // parallel run
+    requests
+        .par_iter()
+        .for_each_with(entry_tx.clone(), |entry_tx, request| {
+            match generate_entry(*request, entry_tx.clone()) {
+                Ok(()) => {
+                    println!("Successfully generated entry");
+                }
+                Err(e) => {
+                    eprintln!("Failed to generate entry {}: {}", request.id, e);
+                }
+            }
+        });
 
     // Ensure data directories exist
     crate::io::ensure_data_directories()
         .map_err(|e| format!("Failed to create data directories: {}", e))?;
-
-    let start_time = Instant::now();
-
-    // Create channels for ensemble generation and I/O
-    let (ensemble_tx, ensemble_rx) = mpsc::channel();
-    let (io_tx, io_rx) = mpsc::channel();
-
     // Start I/O receiver thread for concurrent saving
     let io_handle = crate::io::ensemble::start_receiver_thread(io_rx);
 
-    // Create worker threads with work distribution
-    let mut handles = Vec::new();
-    let entries_per_thread = (number_of_entries + effective_threads - 1) / effective_threads; // Ceiling division
-
-    for thread_id in 0..effective_threads {
-        let start_entry = thread_id * entries_per_thread;
-        let end_entry = std::cmp::min(start_entry + entries_per_thread, number_of_entries);
-
-        if start_entry >= number_of_entries {
-            break; // No more work for this thread
-        }
-
-        let tx = ensemble_tx.clone();
-        let thread_tag = tag.clone();
-        let thread_params = params;
-
-        let handle = std::thread::spawn(move || {
-            println!(
-                "Thread {} starting: generating entries {} to {}",
-                thread_id,
-                start_entry,
-                end_entry - 1
-            );
-
-            for entry_id in start_entry..end_entry {
-                // Create the ensemble generation request
-                let request = EntryGenerationRequest {
-                    id: entry_id,
-                    tag: thread_tag.clone(),
-                    params: thread_params,
-                };
-
-                // Generate the ensemble entry
-                match generate_entry(request, tx.clone()) {
-                    Ok(()) => {
-                        println!(
-                            "Thread {}: Generated ensemble entry {} ({})",
-                            thread_id, entry_id, thread_tag
-                        );
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "Thread {}: Failed to generate entry {}: {}",
-                            thread_id, entry_id, e
-                        );
-                        return Err(format!(
-                            "Thread {}: Generation failed for entry {}: {}",
-                            thread_id, entry_id, e
-                        ));
-                    }
-                }
-            }
-
-            println!("Thread {} completed successfully", thread_id);
-            Ok::<(), String>(())
-        });
-
-        handles.push(handle);
-    }
-
     // Drop the original sender so the receiver will know when all threads are done
-    drop(ensemble_tx);
+    drop(entry_tx);
 
     // Collect and forward ensembles for I/O as they complete
     let mut completed_count = 0;
-    while let Ok(ensemble_result) = ensemble_rx.recv() {
-        // Send ensemble to I/O thread for saving
-        if let Err(e) = io_tx.send(ensemble_result.clone()) {
-            return Err(format!("Failed to send ensemble for saving: {}", e));
+    while let Ok(entry_result) = entry_rx.recv() {
+        // forward the entry result to the I/O thread
+        if let Err(e) = io_tx.send(entry_result.clone()) {
+            return Err(format!("Failed to send entry for saving: {}", e));
         }
 
         completed_count += 1;
         println!(
-            "Submitted ensemble {} for saving ({}/{} completed)",
-            ensemble_result.tag, completed_count, number_of_entries
+            "Submitted entry {} for saving ({}/{} completed)",
+            entry_result.id, completed_count, number_of_entries
         );
     }
 
     // Drop I/O sender to signal completion
     drop(io_tx);
-
-    // Wait for all generation threads to complete and check for errors
-    for (thread_id, handle) in handles.into_iter().enumerate() {
-        match handle.join() {
-            Ok(Ok(())) => {
-                // Thread completed successfully
-            }
-            Ok(Err(e)) => {
-                return Err(format!("Generation thread {} failed: {}", thread_id, e));
-            }
-            Err(_) => {
-                return Err(format!("Generation thread {} panicked", thread_id));
-            }
-        }
-    }
 
     // Wait for I/O thread to complete saving
     match io_handle.join() {
@@ -433,25 +294,12 @@ pub fn generate(
         }
     }
 
-    let duration = start_time.elapsed();
     println!("\n--- Generation Complete ---");
     println!(
         "Successfully generated {} ensemble entries",
         completed_count
     );
-    println!("Total time: {:.2} seconds", duration.as_secs_f64());
-    println!(
-        "Average time per entry: {:.3} seconds",
-        duration.as_secs_f64() / number_of_entries as f64
-    );
     println!("Ensemble entries saved to: ./data/ensemble/");
-
-    if completed_count != number_of_entries {
-        return Err(format!(
-            "Generated {} entries but expected {}",
-            completed_count, number_of_entries
-        ));
-    }
 
     Ok(())
 }
