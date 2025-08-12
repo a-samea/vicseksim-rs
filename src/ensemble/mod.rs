@@ -1,48 +1,6 @@
 //! # Ensemble Generation Module
 //!
-//! This module provides functionality for generating ensembles of bird particles distributed
-//! uniformly on spherical surfaces with minimum distance constraints. It supports both single
-//! ensemble generation and large-scale parallel generation of multiple ensembles with automatic
-//! I/O handling.
-//!
-//! ## Key Features
-//!
-//! - **Uniform Spherical Distribution**: Birds are positioned using mathematically correct
-//!   uniform random spherical coordinates
-//! - **Collision Avoidance**: Rejection sampling ensures minimum distance constraints between particles
-//! - **Parallel Processing**: Efficient multi-threaded generation using Rayon for large ensemble sets
-//! - **Automatic I/O**: Generated ensembles are automatically saved with proper file organization
-//! - **Thread Safety**: All operations are designed for concurrent execution with proper synchronization
-//!
-//! ## Core Structures
-//!
-//! The module defines three main structures for ensemble management:
-//! - [`EntryResult`]: Complete ensemble with metadata for I/O operations
-//! - [`EntryGenerationParams`]: Physical parameters for ensemble generation
-//! - [`EntryGenerationRequest`]: Internal request structure for thread communication
-//!
-//! ## Private Functions
-//!
-//! This module contains two private helper functions:
-//! - `random_bird()`: Generates uniform random spherical coordinates for bird placement
-//! - `generate_entry()`: Core ensemble generation logic with rejection sampling
-//!
-//! ## Usage Examples
-//!
-//! ### Basic ensemble generation:
-//! ```rust
-//! use flocking_lib::ensemble::{self, EntryGenerationParams};
-//!
-//! let params = EntryGenerationParams {
-//!     n_particles: 100,
-//!     radius: 1.0,
-//!     speed: 1.5,
-//!     min_distance: 0.1,
-//! };
-//!
-//! // Generate 10 ensemble entries with tag "experiment"
-//! ensemble::generate(1, 10, params)?;
-//! ```
+//! create!
 
 use crate::bird::Bird;
 use crate::ensemble::io::EntryResultReceiver;
@@ -95,7 +53,7 @@ pub struct EntryResult {
 #[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EntryGenerationParams {
     /// Number of particles to generate in this ensemble
-    pub n_particles: usize,
+    pub num_birds: usize,
     /// Radius of the spherical surface
     pub radius: f64,
     /// Initial speed magnitude for all birds
@@ -224,7 +182,7 @@ fn random_bird() -> (f64, f64, f64) {
 ///     id: 0,
 ///     tag: 1,
 ///     params: EntryGenerationParams {
-///         n_particles: 50,
+///         num_birds: 50,
 ///         radius: 1.0,
 ///         speed: 1.5,
 ///         min_distance: 0.2,
@@ -238,9 +196,9 @@ fn generate_entry(
     request: EntryGenerationRequest,
     tx: mpsc::Sender<EntryResult>,
 ) -> Result<(), String> {
-    let mut birds = Vec::with_capacity(request.params.n_particles);
+    let mut birds = Vec::with_capacity(request.params.num_birds);
 
-    while birds.len() < request.params.n_particles {
+    while birds.len() < request.params.num_birds {
         let (theta, phi, alpha) = random_bird();
 
         // Create new bird from spherical coordinates
@@ -336,7 +294,7 @@ fn generate_entry(
 ///
 /// // Define physical parameters for the ensembles
 /// let params = EntryGenerationParams {
-///     n_particles: 100,        // 100 birds per ensemble
+///     num_birds: 100,        // 100 birds per ensemble
 ///     radius: 1.0,             // Unit sphere
 ///     speed: 1.5,              // Initial speed magnitude
 ///     min_distance: 0.1,       // Minimum separation
@@ -366,7 +324,7 @@ pub fn generate(
     );
     debug!(
         "Configuration: n_particles={}, radius={}, speed={}, min_distance={}",
-        params.n_particles, params.radius, params.speed, params.min_distance
+        params.num_birds, params.radius, params.speed, params.min_distance
     );
 
     // initialization of channels

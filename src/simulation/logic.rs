@@ -26,7 +26,6 @@
 
 use super::*;
 use crate::bird::Bird;
-use crate::simulation::SimulationParams;
 use crate::vector::Vec3;
 use rayon::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -58,21 +57,21 @@ impl Simulation {
     /// The secondary buffer is initialized with default birds that will be overwritten
     /// during the first simulation step.
     pub fn new(
-        request: SimulationRequest, 
+        request: SimulationRequest,
         tx: mpsc::Sender<SimulationSnapshot>,
-        frame_interval: u64
+        frame_interval: usize,
     ) -> Self {
         if request.params.num_birds < 1 {
             panic!("Simulation requires at least one bird")
         }
-        Simulation { 
-            particles_a: request.initial_values, 
-            particles_b: vec![Bird::default(); request.params.num_birds], 
-            params: request.params, 
-            step_count: 0, 
-            current_time: 0.0, 
-            frame_sender: Some(tx), 
-            frame_interval, 
+        Simulation {
+            particles_a: request.initial_values,
+            particles_b: vec![Bird::default(); request.params.num_birds],
+            params: request.params,
+            step_count: 0,
+            current_timestamp: 0.0,
+            frame_sender: tx,
+            frame_interval,
             should_stop: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -83,13 +82,13 @@ impl Simulation {
     }
 
     /// Returns the current simulation step count.
-    pub fn step_count(&self) -> u64 {
+    pub fn step_count(&self) -> usize {
         self.step_count
     }
 
     /// Returns the current continuous simulation time.
     pub fn current_time(&self) -> f64 {
-        self.current_time
+        self.current_timestamp
     }
 
     /// Returns an immutable reference to the current particle state.
@@ -101,8 +100,6 @@ impl Simulation {
     pub fn stop_flag(&self) -> Arc<AtomicBool> {
         Arc::clone(&self.should_stop)
     }
-
-
 
     /// Executes the complete simulation with responsive stop control and frame capture.
     ///
@@ -198,11 +195,7 @@ impl Simulation {
             .enumerate()
             .for_each(|(i, particle_next)| {
                 // Calculate the new state for particle i based on current state
-                *particle_next = update_particle_state(
-                    i,
-                    current_state,
-                    params
-                );
+                *particle_next = update_particle_state(i, current_state, params);
             });
 
         // Swap buffers - this is extremely cheap (just pointer swaps)
@@ -210,7 +203,7 @@ impl Simulation {
 
         // Update simulation state
         self.step_count += 1;
-        self.current_time += self.params.dt;
+        self.current_timestamp += self.params.dt;
     }
 
     /// Transmits current simulation state through the asynchronous I/O channel.
@@ -237,18 +230,18 @@ impl Simulation {
     /// This approach ensures that simulation performance remains predictable even
     /// when external systems experience varying load conditions or failures.
     fn send_frame_data(&self) {
-        if let Some(ref sender) = self.frame_sender {
-            let frame = SimulationSnapshot {
-                step: self.step_count,
-                timestamp: self.current_time,
-                birds: self.particles_a.clone(),
-            };
+        let sender = &self.frame_sender;
 
-            // Non-blocking send - if receiver is gone, just continue
-            let _ = sender.send(frame).unwrap_or_else(|err| {
-                eprintln!("Failed to send frame data: {}", err);
-            });
-        }
+        let frame = SimulationSnapshot {
+            step: self.step_count,
+            timestamp: self.current_timestamp,
+            birds: self.particles_a.clone(),
+        };
+
+        // Non-blocking send - if receiver is gone, just continue
+        let _ = sender.send(frame).unwrap_or_else(|err| {
+            eprintln!("Failed to send frame data: {}", err);
+        });
     }
 
     /// Requests graceful simulation termination by setting the atomic stop flag.
@@ -327,7 +320,7 @@ fn update_particle_state(
 
             // Calculate geodesic distance between particles on sphere surface
             let geodesic_distance = current_bird.distance_from(neighbor_bird, params.radius);
-            
+
             // Include neighbor if within interaction radius and not at same position
             if geodesic_distance > f64::EPSILON && geodesic_distance < params.interaction_radius {
                 Some(neighbor_bird.parallel_transport_velocity(current_bird))
@@ -345,7 +338,9 @@ fn update_particle_state(
         // Compute vector sum of all transported neighbor velocities
         let velocity_sum = transported_velocities
             .iter()
-            .fold(Vec3::zero(), |accumulator, velocity| accumulator + *velocity);
+            .fold(Vec3::zero(), |accumulator, velocity| {
+                accumulator + *velocity
+            });
 
         // Calculate mean velocity direction from neighbors
         let mean_velocity = velocity_sum / transported_velocities.len() as f64;

@@ -4,6 +4,7 @@
 
 # Data
 /data/
+/plots/data
 
 # Editor-specific
 .vscode/

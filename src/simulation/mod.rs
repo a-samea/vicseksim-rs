@@ -1,39 +1,16 @@
 //! # Simulation Module - High-Performance Flocking Engine
 //!
-//! This module provides a comprehensive simulation framework for studying collective
-//! flocking behavior of particles (birds) on spherical surfaces. The implementation
-//! focuses on computational efficiency through parallel processing, memory optimization
-//! via double buffering, and asynchronous I/O for real-time data collection.
-//!
-//! ## Key Features
-//!
-//! - **Parallel Processing**: Leverages rayon for CPU-efficient force calculations
-//! - **Double Buffering**: Eliminates memory allocation overhead during simulation steps
-//! - **Asynchronous I/O**: Non-blocking frame data transmission for continuous simulation
-//! - **Memory Safety**: Thread-safe operations with atomic control mechanisms
-//! - **Configurable Output**: Adjustable snapshot intervals for performance tuning
-//!
-//! ## Architecture Overview
-//!
-//! The simulation engine uses a producer-consumer pattern where:
-//! - The `Simulation` struct produces frame snapshots during execution
-//! - External components consume frame data through MPSC channels
-//! - Parallel workers calculate particle state updates simultaneously
-//! - Double buffering ensures consistent state reads during parallel writes
-//!
-//! ## Submodules
-//!
-//! - [`logic`]: Core physics update functions for particle state evolution
-//! - [`tests`]: Comprehensive unit and integration tests for simulation correctness
+//! create!
 
+pub mod io;
 pub mod logic;
 pub mod tests;
 
-use std::sync::atomic::{AtomicBool};
+use crate::bird::Bird;
+use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use crate::bird::Bird;
 
 /// Comprehensive configuration parameters for flocking simulation physics and behavior.
 ///
@@ -63,14 +40,14 @@ pub struct SimulationParams {
 /// This structure packages all necessary information to initialize and run a complete
 /// flocking simulation. It serves as the primary interface for external systems to
 /// specify simulation parameters, initial conditions, and tracking metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SimulationRequest {
     /// Unique identifier for this simulation run.
-    pub id: usize,    
+    pub id: usize,
     /// Human-readable tag for grouping related simulation runs.
-    pub tag: String,    
+    pub tag: usize,
     /// Identifier linking this simulation to a specific ensemble study.
-    pub ensemble_id: usize,    
+    pub ensemble_entry_id: usize,
     /// Initial spatial and velocity configuration for all birds.
     pub initial_values: Vec<Bird>,
     /// Complete physics and execution parameters for the simulation.
@@ -86,9 +63,9 @@ pub struct SimulationRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimulationSnapshot {
     /// Simulation step number when this snapshot was captured.
-    pub step: u64,
+    pub step: usize,
     /// Continuous simulation time corresponding to this snapshot.
-    pub timestamp: f64, 
+    pub timestamp: f64,
     /// Complete state vector of all birds at this temporal moment.
     pub birds: Vec<Bird>,
 }
@@ -104,9 +81,9 @@ pub struct SimulationResult {
     /// Unique identifier matching the original simulation request.
     pub id: usize,
     /// Descriptive tag inherited from the simulation request.
-    pub tag: String,
+    pub tag: usize,
     /// Ensemble identifier linking this result to related simulation runs.
-    pub ensemble_id: usize,
+    pub ensemble_entry_id: usize,
     /// Complete simulation configuration used for this execution.
     pub params: SimulationParams,
     /// Time-ordered sequence of simulation state snapshots.
@@ -114,11 +91,9 @@ pub struct SimulationResult {
     /// Final configuration of all birds at simulation termination.
     pub final_state: Vec<Bird>,
     /// Unix timestamp indicating when this simulation was executed.
-    pub created_at: u64,
+    pub created_at: usize,
     /// Total number of simulation steps completed.
-    pub total_steps: u64,
-    /// Wall-clock execution time for the entire simulation.
-    pub duration_seconds: f64,
+    pub total_steps: usize,
 }
 
 /// High-performance flocking simulation engine with parallel processing and memory optimization.
@@ -160,13 +135,13 @@ pub struct Simulation {
     /// Immutable simulation configuration controlling physics and behavior.
     params: SimulationParams,
     /// Current discrete simulation step counter.
-    step_count: u64,
+    step_count: usize,
     /// Continuous simulation time in physical units.
-    current_time: f64,
+    current_timestamp: f64,
     /// Asynchronous channel for transmitting frame data to external consumers.
-    frame_sender: Option<mpsc::Sender<SimulationSnapshot>>,
+    frame_sender: mpsc::Sender<SimulationSnapshot>,
     /// Interval controlling snapshot capture frequency.
-    frame_interval: u64,
+    frame_interval: usize,
     /// Thread-safe flag enabling graceful simulation termination.
     should_stop: Arc<AtomicBool>,
 }
