@@ -45,10 +45,14 @@
 //! ```
 
 use crate::bird::Bird;
+use crate::ensemble::io::EntryResultReceiver;
+use crate::io::DataChannel;
 use log::{debug, error, info, trace};
 use rayon::prelude::*;
 use std::sync::mpsc;
 
+/// IO specific Implementations for ensemble data.
+pub mod io;
 /// Unit tests for the ensemble module
 pub mod tests;
 
@@ -388,11 +392,8 @@ pub fn generate(
             }
         });
 
-    // Ensure data directories exist
-    crate::io::ensure_data_directories()
-        .map_err(|e| format!("Failed to create data directories: {}", e))?;
     // Start I/O receiver thread for concurrent saving
-    let io_handle = crate::io::ensemble::start_receiver_thread(io_rx);
+    let io_handle = EntryResultReceiver::start_receiver_thread(io_rx);
 
     // Drop the original sender so the receiver will know when all threads are done
     drop(entry_tx);
