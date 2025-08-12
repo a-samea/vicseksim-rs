@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod units {
-    use crate::ensemble::{generate, EnsembleGenerationRequest, EnsembleGenerationParams};
+    use crate::ensemble::{generate_entry, EnsembleEntryGenerationRequest, EnsembleGenerationParams};
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
@@ -22,7 +22,7 @@ mod units {
             let tx_clone = tx.clone();
             
             let handle = thread::spawn(move || {
-                let request = EnsembleGenerationRequest {
+                let request = EnsembleEntryGenerationRequest {
                     id: i,
                     tag: format!("concurrent_test_{}", i),
                     params: EnsembleGenerationParams {
@@ -34,7 +34,7 @@ mod units {
                 };
 
                 // Call the generate function
-                let result = generate(request, tx_clone);
+                let result = generate_entry(request, tx_clone);
                 assert!(result.is_ok(), "Ensemble generation failed for test case {}", i);
             });
 
@@ -116,7 +116,7 @@ mod units {
         // Test single-threaded generation for baseline verification
         let (tx, rx) = mpsc::channel();
         
-        let request = EnsembleGenerationRequest {
+        let request = EnsembleEntryGenerationRequest {
             id: 42,
             tag: "single_thread_test".to_string(),
             params: EnsembleGenerationParams {
@@ -128,7 +128,7 @@ mod units {
         };
 
         // Generate ensemble
-        let generation_result = generate(request.clone(), tx);
+        let generation_result = generate_entry(request.clone(), tx);
         assert!(generation_result.is_ok(), "Single-threaded generation should succeed");
 
         // Receive result
@@ -161,7 +161,7 @@ mod units {
             let tx_clone = tx.clone();
             
             let handle = thread::spawn(move || {
-                let request = EnsembleGenerationRequest {
+                let request = EnsembleEntryGenerationRequest {
                     id: i,
                     tag: format!("stress_test_{}", i),
                     params: EnsembleGenerationParams {
@@ -172,7 +172,7 @@ mod units {
                     },
                 };
 
-                generate(request, tx_clone).expect("Generation should succeed");
+                generate_entry(request, tx_clone).expect("Generation should succeed");
             });
 
             handles.push(handle);

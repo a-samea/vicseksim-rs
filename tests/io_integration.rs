@@ -1,4 +1,4 @@
-use flocking_lib::ensemble::{generate, EnsembleGenerationRequest, EnsembleGenerationParams};
+use flocking_lib::ensemble::{generate_entry, EnsembleEntryGenerationRequest, EnsembleGenerationParams};
 use flocking_lib::io::ensemble::{start_receiver_thread, list_ensemble_tags_and_ids, load_ensemble};
 use flocking_lib::io::simulation::{FrameCollector, list_simulation_tags_and_ids, load_simulation};
 use flocking_lib::simulation::{SimulationSnapshot, SimulationParams};
@@ -51,7 +51,7 @@ fn ensemble_generation_and_io_integration() {
         let min_distance = *min_distance;
 
         let handle = thread::spawn(move || {
-            let request = EnsembleGenerationRequest {
+            let request = EnsembleEntryGenerationRequest {
                 id,
                 tag: "test".to_string(),
                 params: EnsembleGenerationParams {
@@ -62,7 +62,7 @@ fn ensemble_generation_and_io_integration() {
                 },
             };
 
-            generate(request, gen_tx).expect("Ensemble generation should succeed");
+            generate_entry(request, gen_tx).expect("Ensemble generation should succeed");
         });
 
         generation_handles.push(handle);

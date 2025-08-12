@@ -82,8 +82,8 @@ use std::sync::mpsc;
 /// Ensemble generation result containing the generated birds and metadata
 /// This is the unified structure used by both ensemble generation and IO persistence
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EnsembleResult {
-    /// Unique identifier for this ensemble
+pub struct EnsembleEntryResult {
+    /// Unique identifier for this entry
     pub id: usize,
     /// Tag name for the ensemble (used for file naming, batch processing)
     pub tag: String,
@@ -106,8 +106,8 @@ pub struct EnsembleGenerationParams {
 
 /// Request for ensemble generation containing all necessary parameters
 #[derive(Debug, Clone)]
-pub struct EnsembleGenerationRequest {
-    /// Unique identifier for this ensemble
+pub struct EnsembleEntryGenerationRequest {
+    /// Unique identifier for this entry
     pub id: usize,
     /// Tag name for the ensemble (used for file naming)
     pub tag: String,
@@ -118,7 +118,7 @@ pub struct EnsembleGenerationRequest {
 /// Unit tests for the ensemble module
 pub mod tests;
 
-/// Generates an ensemble of N birds uniformly distributed on a spherical surface.
+/// Generates an ensemble entry of N birds uniformly distributed on a spherical surface.
 ///
 /// This function creates a specified number of birds positioned on a sphere using rejection
 /// sampling to ensure minimum distance constraints. The birds are generated with uniform
@@ -182,9 +182,9 @@ pub mod tests;
 /// let result = rx.recv().unwrap();
 /// println!("Generated ensemble '{}' with {} birds", result.tag, result.birds.len());
 /// ```
-pub fn generate(
-    request: EnsembleGenerationRequest,
-    tx: mpsc::Sender<EnsembleResult>,
+pub fn generate_entry(
+    request: EnsembleEntryGenerationRequest,
+    tx: mpsc::Sender<EnsembleEntryResult>,
 ) -> Result<(), String> {
     let mut rng = rand::rng();
     let mut birds = Vec::with_capacity(request.params.n_particles);
@@ -220,7 +220,7 @@ pub fn generate(
     }
 
     // Create the ensemble result with metadata (timestamps will be added by IO module)
-    let result = EnsembleResult {
+    let result = EnsembleEntryResult {
         id: request.id,
         tag: request.tag,
         birds,

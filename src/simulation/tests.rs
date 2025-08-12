@@ -2,7 +2,7 @@
 mod units {
     use crate::simulation::{Simulation, SimulationParams, SimulationRequest};
     use crate::bird::Bird;
-    use crate::ensemble::{EnsembleGenerationRequest, EnsembleGenerationParams, generate};
+    use crate::ensemble::{EnsembleEntryGenerationRequest, EnsembleGenerationParams, generate_entry};
     use crate::vector::Vec3;
     use std::f64::consts::PI;
     use std::sync::mpsc;
@@ -23,7 +23,7 @@ mod units {
 
         // Generate a small ensemble for testing
         let (tx, rx) = mpsc::channel();
-        let ensemble_request = EnsembleGenerationRequest {
+        let ensemble_request = EnsembleEntryGenerationRequest {
             id: 1,
             tag: "test_ensemble".to_string(),
             params: EnsembleGenerationParams {
@@ -35,7 +35,7 @@ mod units {
         };
         
         // Generate ensemble
-        generate(ensemble_request, tx).expect("Failed to generate test ensemble");
+        generate_entry(ensemble_request, tx).expect("Failed to generate test ensemble");
         let ensemble_result = rx.recv().expect("Failed to receive ensemble");
 
         // Create simulation request

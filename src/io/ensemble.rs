@@ -45,7 +45,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
-use crate::ensemble::{EnsembleResult};
+use crate::ensemble::{EnsembleEntryResult};
 use crate::io::{get_data_path, save_data, load_data, get_current_timestamp, DataType};
 
 
@@ -68,7 +68,7 @@ use crate::io::{get_data_path, save_data, load_data, get_current_timestamp, Data
 ///
 /// * A join handle for the spawned receiver thread that returns `Result<(), String>`
 pub fn start_receiver_thread(
-    rx: mpsc::Receiver<EnsembleResult>,
+    rx: mpsc::Receiver<EnsembleEntryResult>,
 ) -> thread::JoinHandle<Result<(), String>> {
     thread::spawn(move || {
         // Ensure ensemble directory exists
@@ -77,7 +77,7 @@ pub fn start_receiver_thread(
         // Process each ensemble result as it arrives
         while let Ok(ensemble_result) = rx.recv() {
             // Add timestamp info
-            let ensemble_with_metadata = EnsembleResult {
+            let ensemble_with_metadata = EnsembleEntryResult {
                 created_at: get_current_timestamp(),
                 ..ensemble_result
             };
@@ -193,9 +193,115 @@ pub fn list_ensemble_tags_and_ids() -> Result<Vec<(String, usize)>, Box<dyn std:
 /// 
 /// This function will panic if the file exists but contains corrupted data that
 /// cannot be deserialized. This is the expected behavior for data integrity validation.
-pub fn load_ensemble(tag: &str, id: &usize) -> Result<EnsembleResult, Box<dyn std::error::Error>> {
+pub fn load_ensemble(tag: &str, id: &usize) -> Result<EnsembleEntryResult, Box<dyn std::error::Error>> {
     let file_path = get_data_path(DataType::Ensemble, tag, id);
     load_data(&file_path)
 }
 
+
+/// Exports ensemble data to JSON format for Python analysis and visualization
+/// 
+/// This function converts ensemble data into a JSON format that can be easily
+/// imported and processed by Python scripts for analysis and visualization.
+/// The exported JSON contains bird initial conditions, metadata, and generation parameters.
+/// 
+/// # Arguments
+/// 
+/// * `tag` - The ensemble tag identifier
+/// * `id` - The ensemble ID
+/// * `output_path` - Path where to save the JSON file
+/// 
+/// # Returns
+/// 
+/// * `Ok(())` - Successfully exported the data
+/// * `Err(Box<dyn std::error::Error>)` - Error loading ensemble or writing JSON
+/// 
+/// # JSON Structure
+/// 
+/// The exported JSON has the following structure:
+/// ```json
+/// {
+///   "metadata": {
+///     "ensemble_id": 1,
+///     "tag": "experiment_1",
+///     "created_at": 1628765432
+///   },
+///   "parameters": {
+///     "num_birds": 100,
+///     "radius": 1.0,
+///     "speed": 1.0,
+///     "min_distance": 0.1
+///   },
+///   "birds": [
+///     {
+///       "position": {"x": 1.0, "y": 0.0, "z": 0.0},
+///       "velocity": {"x": 0.0, "y": 1.0, "z": 0.0}
+///     }
+///   ]
+/// }
+/// ```
+/// 
+/// # Example Usage
+/// 
+/// ```rust
+/// use flocking_lib::io::ensemble::export_to_json;
+/// use std::path::Path;
+/// 
+/// // Export ensemble data for Python visualization
+/// let output_path = Path::new("./data/ensemble/my_ensemble.json");
+/// export_to_json("experiment", &1, &output_path);
+/// ```
+/// 
+/// The exported JSON can then be loaded in Python for:
+/// - Initial condition visualization
+/// - Distribution analysis of bird positions and velocities
+/// - Parameter validation and comparison
+/// - Setup for simulation batch processing
+pub fn export_to_json(tag: &str, id: &usize, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::json;
+    
+    // Load ensemble data
+    let ensemble_result = load_ensemble(tag, id)?;
+
+    // Convert to JSON-friendly format
+    let json_data = json!({
+        "metadata": {
+            "ensemble_id": ensemble_result.id,
+            "tag": ensemble_result.tag,
+            "created_at": ensemble_result.created_at
+        },
+        "parameters": {
+            "num_birds": ensemble_result.params.n_particles,
+            "radius": ensemble_result.params.radius,
+            "speed": ensemble_result.params.speed,
+            "min_distance": ensemble_result.params.min_distance
+        },
+        "birds": ensemble_result.birds.iter()
+                .map(|bird| {
+                    json!({
+                        "position": {
+                            "x": bird.position.x,
+                            "y": bird.position.y,
+                            "z": bird.position.z
+                        },
+                        "velocity": {
+                            "x": bird.velocity.x,
+                            "y": bird.velocity.y,
+                            "z": bird.velocity.z
+                        }
+                    })
+                }).collect::<Vec<_>>()
+    });
+
+    // Write JSON to file
+    let json_string = serde_json::to_string_pretty(&json_data)?;
+    std::fs::write(output_path, json_string)?;
+
+    // Log the file size
+    if let Ok(metadata) = std::fs::metadata(output_path) {
+        println!("Exported ensemble data to JSON: {} (size: {} bytes)", output_path.display(), metadata.len());
+    }
+
+    Ok(())
+}
 
