@@ -81,6 +81,11 @@ pub fn save_data<T: serde::Serialize>(data: &T, file_path: &Path) -> Result<(), 
     let writer = BufWriter::new(file);
     bincode::serialize_into(writer, data)?;
 
+    // Log the size of the saved file
+    if let Ok(metadata) = fs::metadata(file_path) {
+        println!("Saved file: {} (size: {} bytes)", file_path.display(), metadata.len());
+    }
+
     Ok(())
 }
 

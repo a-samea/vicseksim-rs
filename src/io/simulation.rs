@@ -486,3 +486,115 @@ pub fn list_simulations_by_tag() -> Result<std::collections::HashMap<String, Vec
     
     Ok(results)
 }
+
+/// Exports simulation data to JSON format for Python analysis and visualization
+/// 
+/// This function converts simulation result data into a JSON format that can be
+/// easily imported and processed by Python scripts for analysis and visualization.
+/// The exported JSON contains trajectory data, metadata, and configuration parameters.
+/// 
+/// # Arguments
+/// 
+/// * `tag` - The simulation tag identifier
+/// * `id` - The simulation ID
+/// * `output_path` - Path where to save the JSON file
+/// 
+/// # Returns
+/// 
+/// * `Ok(())` - Successfully exported the data
+/// * `Err(Box<dyn std::error::Error>)` - Error loading simulation or writing JSON
+/// 
+/// # JSON Structure
+/// 
+/// The exported JSON has the following structure:
+/// ```json
+/// {
+///   "metadata": {
+///     "simulation_id": 1,
+///     "tag": "experiment_1",
+///     "ensemble_id": 42,
+///     "total_steps": 1000,
+///     "execution_time_ms": 1234,
+///     "timestamp": 1628765432
+///   },
+///   "parameters": {
+///     "num_birds": 100,
+///     "radius": 1.0,
+///     "speed": 1.0,
+///     "dt": 0.01,
+///     "interaction_radius": 0.5,
+///     "eta": 0.1,
+///     "iterations": 1000
+///   },
+///   "frames": [
+///     {
+///       "step": 0,
+///       "timestamp": 0.0,
+///       "birds": [
+///         {
+///           "position": {"x": 1.0, "y": 0.0, "z": 0.0},
+///           "velocity": {"x": 0.0, "y": 1.0, "z": 0.0}
+///         }
+///       ]
+///     }
+///   ]
+/// }
+/// ```
+pub fn export_to_json(tag: &str, id: &usize, output_path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    use serde_json::json;
+    
+    // Load simulation data
+    let simulation_result = load_simulation(tag, id)?;
+    
+    // Convert to JSON-friendly format
+    let json_data = json!({
+        "metadata": {
+            "simulation_id": simulation_result.id,
+            "tag": simulation_result.tag,
+            "ensemble_id": simulation_result.ensemble_id,
+            "total_steps": simulation_result.total_steps,
+            "duration_seconds": simulation_result.duration_seconds,
+            "created_at": simulation_result.created_at
+        },
+        "parameters": {
+            "num_birds": simulation_result.params.num_birds,
+            "radius": simulation_result.params.radius,
+            "speed": simulation_result.params.speed,
+            "dt": simulation_result.params.dt,
+            "interaction_radius": simulation_result.params.interaction_radius,
+            "eta": simulation_result.params.eta,
+            "iterations": simulation_result.params.iterations
+        },
+        "frames": simulation_result.snapshots.iter().map(|snapshot| {
+            json!({
+                "step": snapshot.step,
+                "timestamp": snapshot.timestamp,
+                "birds": snapshot.birds.iter().map(|bird| {
+                    json!({
+                        "position": {
+                            "x": bird.position.x,
+                            "y": bird.position.y,
+                            "z": bird.position.z
+                        },
+                        "velocity": {
+                            "x": bird.velocity.x,
+                            "y": bird.velocity.y,
+                            "z": bird.velocity.z
+                        }
+                    })
+                }).collect::<Vec<_>>()
+            })
+        }).collect::<Vec<_>>()
+    });
+    
+    // Write JSON to file
+    let json_string = serde_json::to_string_pretty(&json_data)?;
+    std::fs::write(output_path, json_string)?;
+    
+    // Log the file size
+    if let Ok(metadata) = std::fs::metadata(output_path) {
+        println!("Exported simulation data to JSON: {} (size: {} bytes)", output_path.display(), metadata.len());
+    }
+    
+    Ok(())
+}
