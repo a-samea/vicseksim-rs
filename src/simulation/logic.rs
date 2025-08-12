@@ -11,7 +11,7 @@ use std::sync::mpsc;
 impl Engine {
     /// Creates a new simulation instance from a request with optimized memory allocation.
     ///
-    fn new(
+    pub(super) fn new(
         request: SimulationRequest,
         tx: mpsc::Sender<SimulationSnapshot>,
         frame_interval: usize,

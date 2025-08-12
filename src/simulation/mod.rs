@@ -7,6 +7,8 @@ pub mod logic;
 pub mod tests;
 
 use crate::bird::Bird;
+use crate::simulation::io::SimulationResultReceiver;
+use log::debug;
 use std::sync::mpsc;
 
 /// Comprehensive configuration parameters for flocking simulation physics and behavior.
@@ -38,7 +40,7 @@ pub struct SimulationParams {
 /// flocking simulation. It serves as the primary interface for external systems to
 /// specify simulation parameters, initial conditions, and tracking metadata.
 #[derive(Debug, Clone)]
-struct SimulationRequest {
+pub struct SimulationRequest {
     /// Unique identifier for this simulation run.
     pub id: usize,
     /// Human-readable tag for grouping related simulation runs.
@@ -107,4 +109,34 @@ pub struct Engine {
     frame_sender: mpsc::Sender<SimulationSnapshot>,
     /// Interval controlling snapshot capture frequency.
     frame_interval: usize,
+}
+
+pub fn run(request: SimulationRequest, frame_interval: usize) -> Result<(), String> {
+    debug!(
+        "Starting simulation run: id={}, tag={}, ensemble_entry_id={}",
+        request.id, request.tag, request.ensemble_entry_id
+    );
+
+    let (frame_tx, frame_rx) = mpsc::channel();
+
+    let receiver = SimulationResultReceiver {
+        id: request.id,
+        tag: request.tag,
+        ensemble_entry_id: request.ensemble_entry_id,
+        params: request.params,
+    };
+
+    let io_handle = receiver.start_receiver_thread(frame_rx);
+
+    let mut engine = Engine::new(request, frame_tx, frame_interval);
+    engine.run();
+
+    match io_handle.join() {
+        Ok(Ok(())) => {
+            debug!("Simulation completed successfully");
+            Ok(())
+        }
+        Ok(Err(e)) => Err(format!("I/O thread failed: {}", e)),
+        Err(_) => Err("I/O thread panicked".to_string()),
+    }
 }
