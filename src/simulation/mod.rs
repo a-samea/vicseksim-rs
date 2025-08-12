@@ -124,6 +124,7 @@ pub fn run(request: SimulationRequest, frame_interval: usize) -> Result<(), Stri
         tag: request.tag,
         ensemble_entry_id: request.ensemble_entry_id,
         params: request.params,
+        frame_interval,
     };
 
     let io_handle = receiver.start_receiver_thread(frame_rx);
