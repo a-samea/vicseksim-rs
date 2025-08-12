@@ -329,7 +329,6 @@ pub fn generate(
 
     // initialization of channels
     let (entry_tx, entry_rx) = mpsc::channel();
-    let (io_tx, io_rx) = mpsc::channel();
 
     // create work items
     let requests = (0..number_of_entries)
@@ -350,29 +349,11 @@ pub fn generate(
             }
         });
 
-    // Start I/O receiver thread for concurrent saving
-    let io_handle = EntryResultReceiver::start_receiver_thread(io_rx);
-
     // Drop the original sender so the receiver will know when all threads are done
     drop(entry_tx);
 
-    // Collect and forward ensembles for I/O as they complete
-    let mut completed_count = 0;
-    while let Ok(entry_result) = entry_rx.recv() {
-        // forward the entry result to the I/O thread
-        if let Err(e) = io_tx.send(entry_result.clone()) {
-            return Err(format!("Failed to send entry for saving: {}", e));
-        }
-
-        completed_count += 1;
-        trace!(
-            "Submitted entry {} for saving ({}/{} completed)",
-            entry_result.id, completed_count, number_of_entries
-        );
-    }
-
-    // Drop I/O sender to signal completion
-    drop(io_tx);
+    // Start I/O receiver thread for concurrent saving
+    let io_handle = EntryResultReceiver::start_receiver_thread(entry_rx);
 
     // Wait for I/O thread to complete saving
     match io_handle.join() {
@@ -390,7 +371,7 @@ pub fn generate(
     debug!("\n--- Generation Complete ---");
     info!(
         "Successfully generated {} ensemble entries",
-        completed_count
+        number_of_entries
     );
     info!("Ensemble entries saved to: ./data/ensemble/");
 
