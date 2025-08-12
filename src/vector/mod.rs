@@ -86,7 +86,6 @@ impl Vec3 {
     /// // Vectors can represent any 3D quantity
     /// let force = Vec3::new(0.0, -9.81, 0.0); // Gravity
     /// ```
-    #[inline]
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Vec3 { x, y, z }
     }
@@ -110,7 +109,6 @@ impl Vec3 {
     /// assert_eq!(v + Vec3::zero(), v);
     /// assert_eq!(v * 0.0, Vec3::zero());
     /// ```
-    #[inline]
     pub fn zero() -> Self {
         Vec3 {
             x: 0.0,
@@ -118,7 +116,7 @@ impl Vec3 {
             z: 0.0,
         }
     }
-    
+
     /// Returns the unit vector along the positive X-axis (1, 0, 0).
     ///
     /// This represents the standard "right" or "east" direction in most
@@ -131,7 +129,6 @@ impl Vec3 {
     /// assert_eq!(right, Vec3::new(1.0, 0.0, 0.0));
     /// assert!((right.norm() - 1.0).abs() < f64::EPSILON);
     /// ```
-    #[inline]
     pub fn x_hat() -> Self {
         Vec3::new(1.0, 0.0, 0.0)
     }
@@ -148,7 +145,6 @@ impl Vec3 {
     /// assert_eq!(up, Vec3::new(0.0, 1.0, 0.0));
     /// assert!((up.norm() - 1.0).abs() < f64::EPSILON);
     /// ```
-    #[inline]
     pub fn y_hat() -> Self {
         Vec3::new(0.0, 1.0, 0.0)
     }
@@ -165,7 +161,6 @@ impl Vec3 {
     /// assert_eq!(forward, Vec3::new(0.0, 0.0, 1.0));
     /// assert!((forward.norm() - 1.0).abs() < f64::EPSILON);
     /// ```
-    #[inline]
     pub fn z_hat() -> Self {
         Vec3::new(0.0, 0.0, 1.0)
     }

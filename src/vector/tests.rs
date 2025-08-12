@@ -1,4 +1,5 @@
-#[cfg(test)]
+//! # Unit tests for the Vector module
+
 mod units {
     use super::super::Vec3;
     use std::f64::consts::PI;

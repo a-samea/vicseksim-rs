@@ -10,6 +10,34 @@
 use super::Vec3;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+impl Vec3 {
+    /// Checks if this vector is approximately equal to another within epsilon tolerance.
+    ///
+    /// Due to floating-point precision limitations, exact equality is rarely
+    /// appropriate for vector comparisons. This method compares each component
+    /// individually within the specified tolerance.
+    ///
+    /// # Arguments
+    /// * `other` - The vector to compare with
+    /// * `epsilon` - The maximum allowed difference per component
+    ///
+    /// # Examples
+    /// ```
+    /// # use flocking_lib::vector::Vec3;
+    /// let v1 = Vec3::new(1.0, 2.0, 3.0);
+    /// let v2 = Vec3::new(1.0000001, 2.0000001, 3.0000001);
+    ///
+    /// assert!(v1.approx_eq(&v2, 1e-6));
+    /// assert!(!v1.approx_eq(&v2, 1e-8));
+    /// ```
+    pub fn approx_eq(&self, other: &Self, epsilon: f64) -> bool {
+        let epsilon = epsilon.max(f64::EPSILON); // Ensure non-zero epsilon
+        (self.x - other.x).abs() < epsilon
+            && (self.y - other.y).abs() < epsilon
+            && (self.z - other.z).abs() < epsilon
+    }
+}
+
 /// Vector addition (Vec3 + Vec3).
 ///
 /// Adds corresponding components of two vectors. Since Vec3 implements Copy,
@@ -23,13 +51,12 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 /// let b = Vec3::new(4.0, 5.0, 6.0);
 /// let sum = a + b;
 /// assert_eq!(sum, Vec3::new(5.0, 7.0, 9.0));
-/// 
+///
 /// // With references, use explicit dereferencing or let Copy handle it
 /// let sum_ref = *&a + *&b;  // or simply: a + b
 /// ```
 impl Add for Vec3 {
     type Output = Self;
-    #[inline]
     fn add(self, rhs: Self) -> Self::Output {
         Vec3 {
             x: self.x + rhs.x,
@@ -54,7 +81,6 @@ impl Add for Vec3 {
 /// ```
 impl Sub for Vec3 {
     type Output = Self;
-    #[inline]
     fn sub(self, rhs: Self) -> Self::Output {
         Vec3 {
             x: self.x - rhs.x,
@@ -79,7 +105,6 @@ impl Sub for Vec3 {
 /// ```
 impl Mul<f64> for Vec3 {
     type Output = Self;
-    #[inline]
     fn mul(self, rhs: f64) -> Self::Output {
         Vec3 {
             x: self.x * rhs,
@@ -103,7 +128,6 @@ impl Mul<f64> for Vec3 {
 /// ```
 impl Mul<Vec3> for f64 {
     type Output = Vec3;
-    #[inline]
     fn mul(self, rhs: Vec3) -> Self::Output {
         Vec3 {
             x: self * rhs.x,
@@ -115,7 +139,7 @@ impl Mul<Vec3> for f64 {
 
 /// Scalar division (Vec3 / f64).
 ///
-/// Divides all components by the scalar. 
+/// Divides all components by the scalar.
 ///
 /// # Examples
 /// ```
@@ -126,14 +150,8 @@ impl Mul<Vec3> for f64 {
 /// ```
 impl Div<f64> for Vec3 {
     type Output = Self;
-    #[inline]
     fn div(self, rhs: f64) -> Self::Output {
-        let inv = rhs.recip();
-        Vec3 {
-            x: self.x * inv,
-            y: self.y * inv,
-            z: self.z * inv,
-        }
+        self * rhs.recip()
     }
 }
 
@@ -151,7 +169,6 @@ impl Div<f64> for Vec3 {
 /// ```
 impl Neg for Vec3 {
     type Output = Self;
-    #[inline]
     fn neg(self) -> Self::Output {
         Vec3 {
             x: -self.x,

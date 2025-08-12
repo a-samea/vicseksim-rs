@@ -1,6 +1,6 @@
-//! Vector math operations for Vec3
+//! # Vector math operations for Vec3
 //! Provides methods for vector normalization, dot and cross products, angle calculations,
-//! and projections.
+//! and rotation.
 
 use super::Vec3;
 
@@ -25,7 +25,6 @@ impl Vec3 {
     ///     println!("Vector is close to origin");
     /// }
     /// ```
-    #[inline]
     pub fn norm_squared(&self) -> f64 {
         self.x * self.x + self.y * self.y + self.z * self.z
     }
@@ -47,7 +46,6 @@ impl Vec3 {
     /// let unit = Vec3::x_hat();
     /// assert!((unit.norm() - 1.0).abs() < f64::EPSILON);
     /// ```
-    #[inline]
     pub fn norm(&self) -> f64 {
         self.norm_squared().sqrt()
     }
@@ -111,7 +109,6 @@ impl Vec3 {
     /// let parallel = Vec3::new(2.0, 4.0, 6.0); // 2 * a
     /// assert!(a.dot(&parallel) > 0.0); // Positive dot product
     /// ```
-    #[inline]
     pub fn dot(&self, other: &Self) -> f64 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
@@ -151,7 +148,6 @@ impl Vec3 {
     /// let base = Vec3::new(1.0, 2.0, 3.0);
     /// assert_eq!(base.cross(&parallel), Vec3::zero());
     /// ```
-    #[inline]
     pub fn cross(&self, other: &Self) -> Self {
         Vec3 {
             x: self.y * other.z - self.z * other.y,
@@ -193,38 +189,11 @@ impl Vec3 {
     pub fn angle_between(&self, other: &Self) -> f64 {
         let dot_product = self.dot(other);
         let norm_product_sq = self.norm_squared() * other.norm_squared();
-        if norm_product_sq > f64::EPSILON * f64::EPSILON {
+        if norm_product_sq > f64::EPSILON {
             (dot_product / norm_product_sq.sqrt()).acos()
         } else {
             0.0
         }
-    }
-
-    /// Checks if this vector is approximately equal to another within epsilon tolerance.
-    ///
-    /// Due to floating-point precision limitations, exact equality is rarely
-    /// appropriate for vector comparisons. This method compares each component
-    /// individually within the specified tolerance.
-    ///
-    /// # Arguments
-    /// * `other` - The vector to compare with
-    /// * `epsilon` - The maximum allowed difference per component
-    ///
-    /// # Examples
-    /// ```
-    /// # use flocking_lib::vector::Vec3;
-    /// let v1 = Vec3::new(1.0, 2.0, 3.0);
-    /// let v2 = Vec3::new(1.0000001, 2.0000001, 3.0000001);
-    ///
-    /// assert!(v1.approx_eq(&v2, 1e-6));
-    /// assert!(!v1.approx_eq(&v2, 1e-8));
-    /// ```
-    #[inline]
-    pub fn approx_eq(&self, other: &Self, epsilon: f64) -> bool {
-        let epsilon = epsilon.max(f64::EPSILON); // Ensure non-zero epsilon
-        (self.x - other.x).abs() < epsilon
-            && (self.y - other.y).abs() < epsilon
-            && (self.z - other.z).abs() < epsilon
     }
 
     /// Rotates this vector around a normalized axis by the given angle.
@@ -250,7 +219,7 @@ impl Vec3 {
         let axis_norm_sq = axis.norm_squared();
 
         // Check if axis is zero vector
-        if axis_norm_sq < f64::EPSILON * f64::EPSILON {
+        if axis_norm_sq < f64::EPSILON {
             return None; // Cannot rotate around zero vector
         }
 
