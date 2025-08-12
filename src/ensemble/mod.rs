@@ -45,6 +45,7 @@
 //! ```
 
 use crate::bird::Bird;
+use log::{debug, error, info, trace};
 use rayon::prelude::*;
 use std::sync::mpsc;
 
@@ -269,7 +270,10 @@ fn generate_entry(
 
     // Send the complete ensemble result via MPSC to IO
     tx.send(result).map_err(|e| e.to_string())?;
-
+    debug!(
+        "Generated ensemble entry {} with tag {}, Sent through MPSC",
+        request.id, request.tag
+    );
     Ok(())
 }
 
@@ -351,16 +355,15 @@ pub fn generate(
     number_of_entries: usize,
     params: EntryGenerationParams,
 ) -> Result<(), String> {
-    println!("--- Parallel Ensemble Generation ---");
-    println!(
+    debug!("--- Parallel Ensemble Generation ---");
+    debug!(
         "Generating {} ensemble entries with tag '{}'",
         number_of_entries, tag
     );
-    println!(
+    debug!(
         "Configuration: n_particles={}, radius={}, speed={}, min_distance={}",
         params.n_particles, params.radius, params.speed, params.min_distance
     );
-    // rayon
 
     // initialization of channels
     let (entry_tx, entry_rx) = mpsc::channel();
@@ -377,10 +380,10 @@ pub fn generate(
         .for_each_with(entry_tx.clone(), |entry_tx, request| {
             match generate_entry(*request, entry_tx.clone()) {
                 Ok(()) => {
-                    println!("Successfully generated entry");
+                    trace!("Successfully generated entry {}", request.id);
                 }
                 Err(e) => {
-                    eprintln!("Failed to generate entry {}: {}", request.id, e);
+                    error!("Failed to generate entry {}: {}", request.id, e);
                 }
             }
         });
@@ -403,7 +406,7 @@ pub fn generate(
         }
 
         completed_count += 1;
-        println!(
+        trace!(
             "Submitted entry {} for saving ({}/{} completed)",
             entry_result.id, completed_count, number_of_entries
         );
@@ -415,7 +418,7 @@ pub fn generate(
     // Wait for I/O thread to complete saving
     match io_handle.join() {
         Ok(Ok(())) => {
-            println!("All ensemble entries saved successfully");
+            debug!("All ensemble entries saved successfully");
         }
         Ok(Err(e)) => {
             return Err(format!("I/O thread failed: {}", e));
@@ -425,12 +428,12 @@ pub fn generate(
         }
     }
 
-    println!("\n--- Generation Complete ---");
-    println!(
+    debug!("\n--- Generation Complete ---");
+    info!(
         "Successfully generated {} ensemble entries",
         completed_count
     );
-    println!("Ensemble entries saved to: ./data/ensemble/");
+    info!("Ensemble entries saved to: ./data/ensemble/");
 
     Ok(())
 }

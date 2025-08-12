@@ -25,7 +25,7 @@ mod units {
             let handle = thread::spawn(move || {
                 let request = EntryGenerationRequest {
                     id: i,
-                    tag: format!("concurrent_test_{}", i),
+                    tag: i,
                     params: EntryGenerationParams {
                         n_particles,
                         radius,
@@ -71,11 +71,7 @@ mod units {
 
         // Verify each result has the correct number of birds and metadata
         let expected_particle_counts = [50, 100, 25];
-        let expected_tags = [
-            "concurrent_test_0",
-            "concurrent_test_1",
-            "concurrent_test_2",
-        ];
+        let expected_tags = [0, 1, 2];
 
         // Sort results by ID to ensure consistent ordering
         results.sort_by_key(|r| r.id);
@@ -149,7 +145,7 @@ mod units {
 
         let request = EntryGenerationRequest {
             id: 42,
-            tag: "single_thread_test".to_string(),
+            tag: 0,
             params: EntryGenerationParams {
                 n_particles: 75,
                 radius: 1.0,
@@ -172,7 +168,7 @@ mod units {
 
         // Verify correctness
         assert_eq!(result.id, 42, "ID should be preserved");
-        assert_eq!(result.tag, "single_thread_test", "Tag should be preserved");
+        assert_eq!(result.tag, 0, "Tag should be preserved");
         assert_eq!(result.birds.len(), 75, "Should generate exactly 75 birds");
         assert_eq!(result.params.n_particles, 75, "Params should match request");
         assert_eq!(result.params.radius, 1.0, "Radius should match request");
@@ -204,7 +200,7 @@ mod units {
             let handle = thread::spawn(move || {
                 let request = EntryGenerationRequest {
                     id: i,
-                    tag: format!("stress_test_{}", i),
+                    tag: i,
                     params: EntryGenerationParams {
                         n_particles: BIRDS_PER_ENSEMBLE,
                         radius: 1.0,
