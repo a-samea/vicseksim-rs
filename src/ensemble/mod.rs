@@ -73,7 +73,7 @@ pub struct EntryGenerationParams {
 /// This structure is `Copy` and contains only primitives, making it safe to pass
 /// between threads without synchronization concerns.
 #[derive(Debug, Copy, Clone)]
-pub struct EntryGenerationRequest {
+struct EntryGenerationRequest {
     /// Unique identifier for this entry within the generation batch
     pub id: usize,
     /// Numerical tag for ensemble categorization and file naming
@@ -171,27 +171,6 @@ fn random_bird() -> (f64, f64, f64) {
 ///
 /// - MPSC channel transmission failure (usually indicates receiver dropped)
 /// - Potential infinite loop if `min_distance` constraints are impossible to satisfy
-///
-/// # Examples
-///
-/// ```rust
-/// # use std::sync::mpsc;
-/// # use flocking_lib::ensemble::{EntryGenerationRequest, EntryGenerationParams};
-/// let (tx, rx) = mpsc::channel();
-/// let request = EntryGenerationRequest {
-///     id: 0,
-///     tag: 1,
-///     params: EntryGenerationParams {
-///         num_birds: 50,
-///         radius: 1.0,
-///         speed: 1.5,
-///         min_distance: 0.2,
-///     },
-/// };
-///
-/// // This is called internally by the parallel generation system
-/// // generate_entry(request, tx).unwrap();
-/// ```
 fn generate_entry(
     request: EntryGenerationRequest,
     tx: mpsc::Sender<EntryResult>,

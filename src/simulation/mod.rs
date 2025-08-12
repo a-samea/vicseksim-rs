@@ -38,7 +38,7 @@ pub struct SimulationParams {
 /// flocking simulation. It serves as the primary interface for external systems to
 /// specify simulation parameters, initial conditions, and tracking metadata.
 #[derive(Debug, Clone)]
-pub struct SimulationRequest {
+struct SimulationRequest {
     /// Unique identifier for this simulation run.
     pub id: usize,
     /// Human-readable tag for grouping related simulation runs.
