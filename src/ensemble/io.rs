@@ -1,5 +1,5 @@
 use super::*;
-use crate::io::{bin, DataPersistence, DataType};
+use crate::io::{DataPersistence, DataType, bin};
 use std::sync::mpsc::Receiver;
 use std::thread;
 

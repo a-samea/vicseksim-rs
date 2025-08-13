@@ -7,7 +7,7 @@
 #[cfg(test)]
 mod units {
     use crate::bird::Bird;
-    use crate::ensemble::{generate, EntryGenerationParams, EntryResult};
+    use crate::ensemble::{EntryGenerationParams, EntryResult, generate};
     use crate::io::bin;
     use std::fs;
     use std::path::Path;
