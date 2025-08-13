@@ -91,8 +91,6 @@ pub struct SimulationResult {
 }
 
 /// High-performance flocking simulation engine with parallel processing and memory optimization.
-///
-
 pub struct Engine {
     /// Primary particle state buffer containing current simulation state.
     particles_a: Vec<Bird>,
