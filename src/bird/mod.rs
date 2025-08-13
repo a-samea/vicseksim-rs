@@ -141,7 +141,7 @@ impl Bird {
         // Construct velocity vector in local tangent plane
         let velocity = speed * (alpha.cos() * phi_hat + alpha.sin() * theta_hat);
 
-        Bird { position, velocity }
+        Self::new(position, velocity)
     }
 }
 impl Display for Bird {

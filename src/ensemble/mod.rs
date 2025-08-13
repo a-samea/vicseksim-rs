@@ -1,6 +1,170 @@
 //! # Ensemble Generation Module
 //!
-//! create!
+//! High-performance parallel generation of bird flocking ensembles on spherical surfaces.
+//!
+//! This module provides comprehensive tools for creating large-scale collections of initial
+//! conditions for flocking simulations. It generates ensembles of birds positioned on spherical
+//! surfaces with configurable physics parameters, distance constraints, and automatic 
+//! persistence to disk storage.
+//!
+//! ## Overview
+//!
+//! The ensemble generation system is designed for high-throughput scientific computing
+//! scenarios where researchers need to generate hundreds or thousands of initial conditions
+//! for statistical analysis of flocking behavior. The module leverages Rust's concurrency
+//! features and the Rayon parallel processing library to maximize CPU utilization while
+//! maintaining memory efficiency through streaming I/O.
+//!
+//! ## Architecture
+//!
+//! ### Core Components
+//!
+//! - **[`EntryResult`]**: Complete ensemble data structure with metadata
+//! - **[`EntryGenerationParams`]**: Physics and constraint parameters  
+//! - **[`generate`]**: Main parallel generation interface
+//! - **[`io`]**: Concurrent persistence and serialization subsystem
+//!
+//! ### Generation Pipeline
+//!
+//! 1. **Parameter Definition**: Configure physics (speed, radius) and constraints (min_distance)
+//! 2. **Parallel Generation**: Distribute work across CPU cores using rejection sampling
+//! 3. **Distance Validation**: Enforce minimum geodesic separation between all bird pairs
+//! 4. **Concurrent I/O**: Stream results to disk without blocking generation workers
+//! 5. **Metadata Preservation**: Include complete generation parameters for reproducibility
+//!
+//! ## Physics Model
+//!
+//! ### Spherical Surface Dynamics
+//!
+//! Birds are positioned on a spherical surface of configurable radius (typically unit sphere).
+//! Each bird has both a **position** and **velocity** vector, both constrained to the sphere:
+//!
+//! - **Position**: 3D coordinates on the sphere surface
+//! - **Velocity**: Tangent vector with specified magnitude representing initial motion direction
+//!
+//! ### Uniform Distribution Algorithm
+//!
+//! The module uses mathematically correct uniform sampling to avoid clustering artifacts:
+//!
+//! ```text
+//! φ (azimuthal) ~ Uniform(0, 2π)        // Around equator
+//! cos(θ) ~ Uniform(-1, 1)               // Ensures uniform area density
+//! θ = arccos(cos(θ))                    // Polar angle from north pole
+//! α (velocity direction) ~ Uniform(0, 2π) // Tangent velocity direction
+//! ```
+//!
+//! This approach ensures true uniform distribution across the sphere surface, eliminating
+//! the pole clustering that would occur with naive uniform sampling of spherical angles.
+//!
+//! ### Distance Constraints
+//!
+//! The system enforces minimum geodesic distance constraints between all bird pairs using
+//! rejection sampling. This prevents overcrowding and ensures physically realistic initial
+//! conditions suitable for numerical simulation stability.
+//!
+//! ## Performance Characteristics
+//!
+//! ### Computational Complexity
+//!
+//! - **Time**: O(n²) worst-case per ensemble due to pairwise distance checking
+//! - **Memory**: O(n) per ensemble with pre-allocated vectors for efficiency
+//! - **Parallelism**: Scales linearly with CPU core count for multiple ensembles
+//! - **I/O**: Non-blocking concurrent saves maximize throughput
+//!
+//! ### Scalability
+//!
+//! The system efficiently handles various scales:
+//! - **Small ensembles**: 10-100 birds for development and testing
+//! - **Medium ensembles**: 100-1000 birds for typical research scenarios  
+//! - **Large ensembles**: 1000+ birds for high-fidelity statistical studies
+//! - **Batch processing**: Hundreds of ensemble entries for comprehensive analysis
+//!
+//! ## Usage Examples
+//!
+//! ### Basic Ensemble Generation
+//!
+//! ```rust
+//! use flocking_lib::ensemble::{self, EntryGenerationParams};
+//!
+//! // Define physics parameters
+//! let params = EntryGenerationParams {
+//!     num_birds: 200,        // 200 birds per ensemble
+//!     radius: 1.0,           // Unit sphere
+//!     speed: 1.0,            // Unit initial speed
+//!     min_distance: 0.05,    // 5% of radius minimum separation
+//! };
+//!
+//! // Generate 100 ensemble entries with tag "experiment_001"
+//! match ensemble::generate(1, 100, params) {
+//!     Ok(()) => println!("Generation completed successfully"),
+//!     Err(e) => eprintln!("Generation failed: {}", e),
+//! }
+//! ```
+//!
+//! ### Parameter Sensitivity Studies
+//!
+//! ```rust
+//! // Generate ensembles with varying densities for statistical analysis
+//! let base_params = EntryGenerationParams {
+//!     num_birds: 150,
+//!     radius: 1.0,
+//!     speed: 1.0,
+//!     min_distance: 0.03,    // Higher density
+//! };
+//!
+//! // Low density ensemble (tag 1)
+//! ensemble::generate(1, 50, base_params)?;
+//!
+//! // Medium density ensemble (tag 2)  
+//! let medium_params = EntryGenerationParams { min_distance: 0.05, ..base_params };
+//! ensemble::generate(2, 50, medium_params)?;
+//!
+//! // High density ensemble (tag 3)
+//! let high_params = EntryGenerationParams { min_distance: 0.08, ..base_params };
+//! ensemble::generate(3, 50, high_params)?;
+//! ```
+//!
+//! ## File Organization
+//!
+//! Generated ensembles are automatically saved to organized directory structures:
+//!
+//! ```text
+//! ./data/ensemble/
+//! ├── ensemble_tag_1_entry_0.bin      // Binary format for efficiency
+//! ├── ensemble_tag_1_entry_1.bin
+//! ├── ...
+//! └── ensemble_tag_1_entry_99.bin
+//! ```
+//!
+//! Each file contains a complete [`EntryResult`] with birds, metadata, and generation parameters
+//! serialized using efficient binary encoding for fast loading in analysis workflows.
+//!
+//! ## Integration with Analysis
+//!
+//! The ensemble module integrates seamlessly with downstream analysis components:
+//!
+//! - **Simulation Input**: [`EntryResult`] structures can be directly loaded as initial conditions
+//! - **Statistical Analysis**: Batch processing of multiple ensemble files for population studies  
+//! - **Parameter Studies**: Tag-based organization enables systematic exploration of parameter space
+//! - **Reproducibility**: Complete parameter preservation ensures exact reproduction of conditions
+//!
+//! ## Error Handling
+//!
+//! The module provides comprehensive error handling for robust operation:
+//!
+//! - **Constraint Validation**: Detects impossible distance constraints before generation
+//! - **I/O Error Recovery**: Graceful handling of filesystem issues with descriptive messages
+//! - **Thread Safety**: Safe parallel execution with proper error propagation
+//! - **Resource Management**: Automatic cleanup of threads and channels on completion
+//!
+//! ## Future Extensions
+//!
+//! The modular architecture supports future enhancements:
+//!
+//! - **Alternative Surfaces**: Extension to toroidal or other manifold geometries
+//! - **Complex Constraints**: Multi-body distance constraints or exclusion zones  
+//! - **Adaptive Sampling**: Intelligent placement algorithms for difficult constraint scenarios
+//! - **Custom Distributions**: Non-uniform initial distributions for specialized studies
 
 use crate::bird::Bird;
 use log::{debug, error, info, trace};
@@ -36,21 +200,21 @@ pub struct EntryResult {
     pub params: EntryGenerationParams,
 }
 
-/// Physical and numerical parameters controlling ensemble generation.
+/// Physical and numerical parameters controlling entry generation.
 ///
-/// These parameters define the physical properties of the generated ensemble and the
+/// These parameters define the physical properties of the generated entry and the
 /// constraints for particle placement. All parameters are preserved in the final
 /// [`EntryResult`] for reproducibility and analysis.
 ///
 /// # Field Details
 ///
-/// * `n_particles` - Target number of birds to generate in the ensemble
+/// * `n_particles` - Target number of birds to generate in the entry
 /// * `radius` - Radius of the spherical surface (typically 1.0 for unit sphere)
 /// * `speed` - Initial speed magnitude for all birds (velocity vector magnitude)
 /// * `min_distance` - Minimum geodesic distance constraint between any two birds
 #[derive(Debug, Copy, Clone, serde::Serialize, serde::Deserialize)]
 pub struct EntryGenerationParams {
-    /// Number of particles to generate in this ensemble
+    /// Number of particles to generate in this entry
     pub num_birds: usize,
     /// Radius of the spherical surface
     pub radius: f64,
