@@ -41,15 +41,7 @@ pub fn start_receiver_thread(
             snapshots,
         };
 
-        bin::save_binary(&result).map_err(|e| e.to_string())?;
+        bin::save_file(&result).map_err(|e| e.to_string())?;
         Ok(())
     })
-}
-
-pub struct SimulationResultReceiver {
-    pub id: usize,
-    pub tag: usize,
-    pub ensemble_entry_id: usize,
-    pub params: SimulationParams,
-    pub frame_interval: usize,
 }
