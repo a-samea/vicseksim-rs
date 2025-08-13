@@ -4,7 +4,7 @@
 //!
 //! This module provides comprehensive tools for creating large-scale collections of initial
 //! conditions for flocking simulations. It generates ensembles of birds positioned on spherical
-//! surfaces with configurable physics parameters, distance constraints, and automatic 
+//! surfaces with configurable physics parameters, distance constraints, and automatic
 //! persistence to disk storage.
 //!
 //! ## Overview
@@ -104,6 +104,7 @@
 //! ### Parameter Sensitivity Studies
 //!
 //! ```rust
+//! # use flocking_lib::ensemble::{self, EntryGenerationParams};
 //! // Generate ensembles with varying densities for statistical analysis
 //! let base_params = EntryGenerationParams {
 //!     num_birds: 150,
@@ -237,11 +238,11 @@ pub struct EntryGenerationParams {
 #[derive(Debug, Copy, Clone)]
 struct EntryGenerationRequest {
     /// Unique identifier for this entry within the generation batch
-    pub id: usize,
+    id: usize,
     /// Numerical tag for ensemble categorization and file naming
-    pub tag: usize,
+    tag: usize,
     /// Physical and numerical generation parameters
-    pub params: EntryGenerationParams,
+    params: EntryGenerationParams,
 }
 
 /// Generates uniform random spherical coordinates for bird placement.
