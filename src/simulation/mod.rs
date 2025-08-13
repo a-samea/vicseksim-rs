@@ -7,7 +7,6 @@ pub mod logic;
 pub mod tests;
 
 use crate::bird::Bird;
-use crate::simulation::io::SimulationResultReceiver;
 use log::debug;
 use std::sync::mpsc;
 
@@ -31,7 +30,9 @@ pub struct SimulationParams {
     /// Noise parameter controlling random perturbations in bird behavior.
     pub eta: f64,
     /// Maximum number of simulation steps to execute.
-    pub iterations: usize,
+    pub total_iterations: usize,
+    /// Interval controlling snapshot capture frequency.
+    pub frame_interval: usize,
 }
 
 /// Simulation execution request containing initial conditions and configuration.
@@ -87,8 +88,6 @@ pub struct SimulationResult {
     pub params: SimulationParams,
     /// Time-ordered sequence of simulation state snapshots.
     pub snapshots: Vec<SimulationSnapshot>,
-    /// Total number of simulation steps completed.
-    pub total_steps: usize,
 }
 
 /// High-performance flocking simulation engine with parallel processing and memory optimization.
@@ -107,11 +106,9 @@ pub struct Engine {
     current_timestamp: f64,
     /// Asynchronous channel for transmitting frame data to external consumers.
     frame_sender: mpsc::Sender<SimulationSnapshot>,
-    /// Interval controlling snapshot capture frequency.
-    frame_interval: usize,
 }
 
-pub fn run(request: SimulationRequest, frame_interval: usize) -> Result<(), String> {
+pub fn run(request: SimulationRequest) -> Result<(), String> {
     debug!(
         "Starting simulation run: id={}, tag={}, ensemble_entry_id={}",
         request.id, request.tag, request.ensemble_entry_id
@@ -119,17 +116,15 @@ pub fn run(request: SimulationRequest, frame_interval: usize) -> Result<(), Stri
 
     let (frame_tx, frame_rx) = mpsc::channel();
 
-    let receiver = SimulationResultReceiver {
-        id: request.id,
-        tag: request.tag,
-        ensemble_entry_id: request.ensemble_entry_id,
-        params: request.params,
-        frame_interval,
-    };
+    let io_handle = io::start_receiver_thread(
+        frame_rx,
+        request.params,
+        request.id,
+        request.tag,
+        request.ensemble_entry_id,
+    );
 
-    let io_handle = receiver.start_receiver_thread(frame_rx);
-
-    let mut engine = Engine::new(request, frame_tx, frame_interval);
+    let mut engine = Engine::new(request, frame_tx);
     engine.run();
 
     match io_handle.join() {

@@ -3,8 +3,6 @@
 //! create!
 
 use crate::bird::Bird;
-use crate::ensemble::io::EntryResultReceiver;
-use crate::io::DataChannel;
 use log::{debug, error, info, trace};
 use rayon::prelude::*;
 use std::sync::mpsc;
@@ -332,7 +330,7 @@ pub fn generate(
     drop(entry_tx);
 
     // Start I/O receiver thread for concurrent saving
-    let io_handle = EntryResultReceiver::start_receiver_thread(entry_rx);
+    let io_handle = io::start_receiver_thread(entry_rx);
 
     // Wait for I/O thread to complete saving
     match io_handle.join() {

@@ -11,11 +11,7 @@ use std::sync::mpsc;
 impl Engine {
     /// Creates a new simulation instance from a request with optimized memory allocation.
     ///
-    pub(super) fn new(
-        request: SimulationRequest,
-        tx: mpsc::Sender<SimulationSnapshot>,
-        frame_interval: usize,
-    ) -> Self {
+    pub(super) fn new(request: SimulationRequest, tx: mpsc::Sender<SimulationSnapshot>) -> Self {
         if request.params.num_birds < 1 {
             panic!("Simulation requires at least one bird")
         }
@@ -26,7 +22,6 @@ impl Engine {
             step_count: 0,
             current_timestamp: 0.0,
             frame_sender: tx,
-            frame_interval,
         }
     }
 
@@ -53,11 +48,11 @@ impl Engine {
     /// Executes the complete simulation with responsive stop control and frame capture.
     ///
     pub fn run(&mut self) {
-        for _ in 0..self.params.iterations {
+        for _ in 0..self.params.total_iterations {
             self.step();
 
             // Send frame data if interval reached
-            if self.step_count % self.frame_interval == 0 {
+            if self.step_count % self.params.frame_interval == 0 {
                 self.send_frame_data();
             }
         }
