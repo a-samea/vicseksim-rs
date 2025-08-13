@@ -384,30 +384,10 @@ fn generate_entry(
 /// - I/O thread failures (disk space, write permissions)
 /// - Channel communication failures (system resource exhaustion)
 ///
-/// # Examples
-///
-/// ```rust
-/// use flocking_lib::ensemble::{self, EntryGenerationParams};
-///
-/// // Define physical parameters for the ensembles
-/// let params = EntryGenerationParams {
-///     num_birds: 100,        // 100 birds per ensemble
-///     radius: 1.0,             // Unit sphere
-///     speed: 1.5,              // Initial speed magnitude
-///     min_distance: 0.1,       // Minimum separation
-/// };
-///
-/// // Generate 50 ensemble entries with tag "experiment_1"
-/// match ensemble::generate(1, 50, params) {
-///     Ok(()) => println!("Generation completed successfully"),
-///     Err(e) => eprintln!("Generation failed: {}", e),
-/// }
-/// ```
-///
 /// # File Output
 ///
 /// Generated ensembles are saved to `./data/ensemble/` with filenames following
-/// the pattern `ensemble_tag_{tag}_entry_{id}.json`, where `tag` and `id` correspond
+/// the pattern `t{tag}-i{id}.json`, where `tag` and `id` correspond
 /// to the function parameters and individual entry identifiers.
 pub fn generate(
     tag: usize,

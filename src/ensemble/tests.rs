@@ -72,7 +72,6 @@ mod units {
     }
 
     /// Creates a temporary directory for test file operations
-    #[allow(dead_code)]
     fn setup_temp_dir() -> TempDir {
         tempfile::tempdir().expect("Failed to create temp dir")
     }
