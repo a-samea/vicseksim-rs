@@ -5,6 +5,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  release:
+    types: [ created ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,10 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
       - name: Check formatting
         run: cargo fmt -- --check
       - name: Run linter
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     name: Test
@@ -29,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Run tests
-        run: cargo test --workspace
+        run: cargo test --workspace --verbose
 
   build-binaries:
     name: Build Binaries
@@ -39,33 +43,54 @@ jobs:
         include:
           - platform: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary-name: flok
+            binary-name: vicseksim-rs
+            os: linux
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            binary-name: flok.exe
+            binary-name: vicseksim-rs.exe
+            os: windows
           - platform: macos-latest
             target: x86_64-apple-darwin
-            binary-name: flok
+            binary-name: vicseksim-rs
+            os: macos
           - platform: macos-latest
             target: aarch64-apple-darwin
-            binary-name: flok
+            binary-name: vicseksim-rs
+            os: macos-arm64
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
-      - name: Build
+      - name: Build binary
         run: cargo build --release --target ${{ matrix.target }}
-      - name: Upload Artifact
+      - name: Create archive (Unix)
+        if: matrix.platform != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czf vicseksim-rs-${{ matrix.os }}.tar.gz ${{ matrix.binary-name }}
+      - name: Create archive (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          Compress-Archive -Path ${{ matrix.binary-name }} -DestinationPath vicseksim-rs-${{ matrix.os }}.zip
+      - name: Upload Unix artifacts
+        if: matrix.platform != 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
-          name: flocking-cli-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/${{ matrix.binary-name }}
+          name: vicseksim-rs-${{ matrix.os }}
+          path: target/${{ matrix.target }}/release/vicseksim-rs-${{ matrix.os }}.tar.gz
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: vicseksim-rs-${{ matrix.os }}
+          path: target/${{ matrix.target }}/release/vicseksim-rs-${{ matrix.os }}.zip
 
   create-release:
     name: Create Release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'release'
     needs: build-binaries
     runs-on: ubuntu-latest
     permissions:
@@ -75,8 +100,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-      - name: Create Release
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*/*
+          files: |
+            artifacts/vicseksim-rs-linux/vicseksim-rs-linux.tar.gz
+            artifacts/vicseksim-rs-windows/vicseksim-rs-windows.zip
+            artifacts/vicseksim-rs-macos/vicseksim-rs-macos.tar.gz
+            artifacts/vicseksim-rs-macos-arm64/vicseksim-rs-macos-arm64.tar.gz
           generate_release_notes: true
