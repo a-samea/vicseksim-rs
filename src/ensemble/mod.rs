@@ -79,52 +79,6 @@
 //! - **Large ensembles**: 1000+ birds for high-fidelity statistical studies
 //! - **Batch processing**: Hundreds of ensemble entries for comprehensive analysis
 //!
-//! ## Usage Examples
-//!
-//! ### Basic Ensemble Generation
-//!
-//! ```rust
-//! use flocking_lib::ensemble::{self, EntryGenerationParams};
-//!
-//! // Define physics parameters
-//! let params = EntryGenerationParams {
-//!     num_birds: 200,        // 200 birds per ensemble
-//!     radius: 1.0,           // Unit sphere
-//!     speed: 1.0,            // Unit initial speed
-//!     min_distance: 0.05,    // 5% of radius minimum separation
-//! };
-//!
-//! // Generate 100 ensemble entries with tag "experiment_001"
-//! match ensemble::generate(1, 100, params) {
-//!     Ok(()) => println!("Generation completed successfully"),
-//!     Err(e) => eprintln!("Generation failed: {}", e),
-//! }
-//! ```
-//!
-//! ### Parameter Sensitivity Studies
-//!
-//! ```rust
-//! # use flocking_lib::ensemble::{self, EntryGenerationParams};
-//! // Generate ensembles with varying densities for statistical analysis
-//! let base_params = EntryGenerationParams {
-//!     num_birds: 150,
-//!     radius: 1.0,
-//!     speed: 1.0,
-//!     min_distance: 0.03,    // Higher density
-//! };
-//!
-//! // Low density ensemble (tag 1)
-//! ensemble::generate(1, 50, base_params)?;
-//!
-//! // Medium density ensemble (tag 2)  
-//! let medium_params = EntryGenerationParams { min_distance: 0.05, ..base_params };
-//! ensemble::generate(2, 50, medium_params)?;
-//!
-//! // High density ensemble (tag 3)
-//! let high_params = EntryGenerationParams { min_distance: 0.08, ..base_params };
-//! ensemble::generate(3, 50, high_params)?;
-//! ```
-//!
 //! ## File Organization
 //!
 //! Generated ensembles are automatically saved to organized directory structures:
@@ -378,6 +332,7 @@ fn generate_entry(
         "Generated ensemble entry {} with tag {}, Sent through MPSC",
         request.id, request.tag
     );
+    drop(tx);
     Ok(())
 }
 

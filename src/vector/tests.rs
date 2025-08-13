@@ -1,6 +1,7 @@
 //! # Unit tests for the Vector module
 
 mod units {
+    #![allow(unused_imports)]
     use super::super::Vec3;
     use std::f64::consts::PI;
 

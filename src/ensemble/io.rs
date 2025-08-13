@@ -4,110 +4,69 @@ use std::sync::mpsc::Receiver;
 use std::thread;
 
 /// Implementation of the [`DataPersistence`] trait for [`EntryResult`] structures.
-/// 
+///
 /// This implementation enables automatic serialization and file management for ensemble
 /// data through the unified I/O system. It defines how ensemble entries are categorized,
 /// identified, and persisted to disk storage.
 impl DataPersistence for EntryResult {
     /// Returns the data type identifier for ensemble entries.
-    /// 
-    /// This method categorizes all [`EntryResult`] instances as ensemble data,
-    /// which determines the directory structure and file naming conventions
-    /// used by the I/O system.
-    /// 
-    /// # Returns
-    /// 
-    /// [`DataType::Ensemble`] - Identifies this as ensemble data for proper routing
     fn data_type() -> DataType {
         DataType::Ensemble
     }
 
     /// Returns the unique identifier for this ensemble entry.
-    /// 
-    /// The ID is used to distinguish individual entries within a generation batch
-    /// and forms part of the filename when saving to disk. This ensures each
-    /// entry can be uniquely identified and retrieved.
-    /// 
-    /// # Returns
-    /// 
-    /// The unique numerical identifier for this ensemble entry
     fn id(&self) -> usize {
         self.id
     }
 
     /// Returns the tag identifier for this ensemble entry.
-    /// 
-    /// The tag is used for categorizing related ensemble entries (e.g., from the
-    /// same experiment or parameter set) and forms part of the filename structure.
-    /// This enables efficient organization and retrieval of ensemble collections.
-    /// 
-    /// # Returns
-    /// 
-    /// The numerical tag identifier for ensemble categorization
     fn tag(&self) -> usize {
         self.tag
     }
 }
 
 /// Starts a dedicated I/O thread for concurrent ensemble data persistence.
-/// 
+///
 /// This function creates a separate thread that continuously receives completed
 /// [`EntryResult`] instances from parallel generation workers and saves them to
 /// disk using the binary serialization system. This architecture prevents I/O
 /// operations from blocking the CPU-intensive ensemble generation process.
-/// 
+///
 /// # Architecture Benefits
-/// 
+///
 /// - **Non-blocking Generation**: Ensemble generation threads can immediately
 ///   continue with new work after sending results
 /// - **Concurrent I/O**: File writing happens in parallel with generation
 /// - **Memory Efficiency**: Results are processed and released as soon as received
 /// - **Error Isolation**: I/O failures don't crash generation workers
-/// 
+///
 /// # Thread Lifecycle
-/// 
+///
 /// 1. **Initialization**: Creates new thread with moved receiver ownership
 /// 2. **Processing Loop**: Continuously receives and saves [`EntryResult`] instances
 /// 3. **Termination**: Exits cleanly when all senders are dropped (channel closed)
 /// 4. **Cleanup**: Thread join handle allows main thread to wait for completion
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `rx` - MPSC receiver for [`EntryResult`] instances from generation workers.
 ///          The receiver is moved into the thread for exclusive ownership.
-/// 
+///
 /// # Returns
-/// 
+///
 /// [`thread::JoinHandle<Result<(), String>>`] - Handle for waiting on thread completion.
 /// The wrapped `Result` indicates whether all I/O operations succeeded:
 /// - `Ok(())` - All ensemble entries saved successfully
 /// - `Err(String)` - Descriptive error message for any I/O failures
-/// 
+///
 /// # Error Handling
-/// 
+///
 /// The I/O thread will continue processing as long as it can receive data, but will
 /// terminate and return an error if any file save operation fails. This ensures
 /// data integrity while maximizing successful saves.
-/// 
-/// # Example Usage
-/// 
-/// ```rust
-/// use std::sync::mpsc;
-/// use flocking_lib::ensemble::{EntryResult, io};
-/// 
-/// let (tx, rx) = mpsc::channel();
-/// let io_handle = io::start_receiver_thread(rx);
-/// 
-/// // ... generate ensembles and send via tx ...
-/// 
-/// // Wait for all I/O to complete
-/// match io_handle.join() {
-///     Ok(Ok(())) => println!("All saves completed"),
-///     Ok(Err(e)) => eprintln!("I/O error: {}", e),
-///     Err(_) => eprintln!("I/O thread panicked"),
-/// }
-/// ```
-pub fn start_receiver_thread(rx: Receiver<EntryResult>) -> thread::JoinHandle<Result<(), String>> {
+pub(super) fn start_receiver_thread(
+    rx: Receiver<EntryResult>,
+) -> thread::JoinHandle<Result<(), String>> {
     thread::spawn(move || {
         // Continuously process ensemble results until channel closes
         while let Ok(entry_result) = rx.recv() {
